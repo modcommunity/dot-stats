@@ -1,0 +1,32 @@
+; dot-stats — player statistics, declared once and reported to the backbone.
+;
+; The distributable is `addons/dot_stats/`. This project exists so the addon can
+; be opened and validated standalone.
+;
+; `addons/dot_core/` is a LOCAL SYMLINK to ../dot-core/addons/dot_core and is
+; gitignored — dot-core is a separate repository. See CLAUDE.md.
+
+config_version=5
+
+[application]
+
+config/name="dot-stats"
+config/description="Per-player statistics a game declares once and reports to the TMC backbone in batches: counters, gauges, bests and lowests, keyed by a pseudonymous player id."
+config/version="0.1.0"
+run/main_scene="res://examples/stats_selftest.tscn"
+config/features=PackedStringArray("4.4", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/dot_core/plugin.cfg", "res://addons/dot_stats/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
