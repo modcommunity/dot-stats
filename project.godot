@@ -14,7 +14,7 @@ config/name="dot-stats"
 config/description="Per-player statistics a game declares once and reports to the TMC backbone in batches: counters, gauges, bests and lowests, keyed by a pseudonymous player id."
 config/version="0.1.0"
 run/main_scene="res://examples/stats_selftest.tscn"
-config/features=PackedStringArray("4.4", "GL Compatibility")
+config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [display]

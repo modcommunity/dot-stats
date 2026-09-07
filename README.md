@@ -27,10 +27,10 @@ batching, the site storing.
 
 ## Installing
 
-Copy `addons/dot_stats/` and [`dot-core`](../dot-core)'s `addons/dot_core/` into your
+Copy `addons/dot_stats/` and [`dot-core`](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into your
 project and enable dot-stats in *Project → Project Settings → Plugins*.
 
-[dot-auth](../dot-auth) supplies both clients — `DotBackboneClient` for a server's
+[dot-auth](https://github.com/modcommunity/dot-auth) supplies both clients — `DotBackboneClient` for a server's
 reporting and `DotAuthClient` for a player's own — and is optional; neither is named
 anywhere in the source.
 
