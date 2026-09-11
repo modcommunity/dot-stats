@@ -12,27 +12,17 @@ This asset, along with all the others, was built initially with **Claude Code** 
 I intend on reviewing code, testing, and editing documentation regularly. If you're interested in helping out, please let me know!
 
 ## Per-Player Statistics
-**Per-player statistics a game declares once and reports in batches.** Counters,
-gauges, bests and lowests, merged by a rule the game states, filed to the TMC
-backbone under an app or a server integration.
+**Per-player statistics a game declares once and reports in batches.** Counters, gauges, bests and lowests, merged by a rule the game states, filed to the TMC backbone under an app or a server integration.
 
 ## Why
 
-A leaderboard is one number per player, ordered. Most of what a game counts is not
-that: kills, deaths, jumps, metres, seconds played, a top speed, a level. Those are
-many numbers per player, accumulated, and the only thing anybody has to agree on is
-how a new reading meets an old one — add it, replace it, or keep the better. State
-that once per stat and every party can apply it: the server counting, the reporter
-batching, the site storing.
+A leaderboard is one number per player, ordered. Most of what a game counts is not that: kills, deaths, jumps, metres, seconds played, a top speed, a level. Those are many numbers per player, accumulated, and the only thing anybody has to agree on is how a new reading meets an old one — add it, replace it, or keep the better. State that once per stat and every party can apply it: the server counting, the reporter batching, the site storing.
 
 ## Installing
 
-Copy `addons/dot_stats/` and [`dot-core`](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into your
-project and enable dot-stats in *Project → Project Settings → Plugins*.
+Copy `addons/dot_stats/` and [`dot-core`](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into your project and enable dot-stats in *Project → Project Settings → Plugins*.
 
-[dot-auth](https://github.com/modcommunity/dot-auth) supplies both clients — `DotBackboneClient` for a server's
-reporting and `DotAuthClient` for a player's own — and is optional; neither is named
-anywhere in the source.
+[dot-auth](https://github.com/modcommunity/dot-auth) supplies both clients — `DotBackboneClient` for a server's reporting and `DotAuthClient` for a player's own — and is optional; neither is named anywhere in the source.
 
 ## Five minutes
 
@@ -54,14 +44,11 @@ tracker.record(player_key, &"top_speed", 41.2)
 tracker.end(player_key)                 # reports the last delta, forgets them
 ```
 
-Every 30 seconds — and once more on the way down — the tracker sends each player's
-delta since the last report: `{"kills": 3, "top_speed": 41.2}`. The site merges each
-by its kind.
+Every 30 seconds — and once more on the way down — the tracker sends each player's delta since the last report: `{"kills": 3, "top_speed": 41.2}`. The site merges each by its kind.
 
 ## The other surface
 
-A player's own client reports its own figures, with the player's token and no
-integration credential anywhere near it:
+A player's own client reports its own figures, with the player's token and no integration credential anywhere near it:
 
 ```gdscript
 var mine := DotStatsClient.new()
@@ -73,8 +60,7 @@ mine.record(&"launches")
 var held := await mine.fetch_mine()
 ```
 
-Both land on the same rows, because a client files under the member's key for the
-app's own scope. Keep anything competitive on the server; this is for a diary.
+Both land on the same rows, because a client files under the member's key for the app's own scope. Keep anything competitive on the server; this is for a diary.
 
 ## Validating
 
@@ -82,5 +68,4 @@ app's own scope. Keep anything competitive on the server; this is for a diary.
 godot --headless --path . res://examples/stats_selftest.tscn
 ```
 
-See [CLAUDE.md](CLAUDE.md) for the design, the two surfaces, and what is
-deliberately left out.
+See [CLAUDE.md](CLAUDE.md) for the design, the two surfaces, and what is deliberately left out.
