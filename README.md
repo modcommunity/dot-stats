@@ -16,13 +16,13 @@ I intend on reviewing code, testing, and editing documentation regularly. If you
 
 ## Why
 
-A leaderboard is one number per player, ordered. Most of what a game counts is not that: kills, deaths, jumps, metres, seconds played, a top speed, a level. Those are many numbers per player, accumulated, and the only thing anybody has to agree on is how a new reading meets an old one — add it, replace it, or keep the better. State that once per stat and every party can apply it: the server counting, the reporter batching, the site storing.
+A leaderboard is one number per player, ordered. Most of what a game counts is not that: kills, deaths, jumps, metres, seconds played, a top speed, a level. Those are many numbers per player, accumulated, and the only thing anybody has to agree on is how a new reading meets an old one: add it, replace it, or keep the better. State that once per stat and every party can apply it: the server counting, the reporter batching, the site storing.
 
 ## Installing
 
 Copy `addons/dot_stats/` and [`dot-core`](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into your project and enable dot-stats in *Project → Project Settings → Plugins*.
 
-[dot-auth](https://github.com/modcommunity/dot-auth) supplies both clients — `DotBackboneClient` for a server's reporting and `DotAuthClient` for a player's own — and is optional; neither is named anywhere in the source.
+[dot-auth](https://github.com/modcommunity/dot-auth) supplies both clients, `DotBackboneClient` for a server's reporting and `DotAuthClient` for a player's own, and is optional; neither is named anywhere in the source.
 
 ## Five minutes
 
@@ -44,7 +44,7 @@ tracker.record(player_key, &"top_speed", 41.2)
 tracker.end(player_key)                 # reports the last delta, forgets them
 ```
 
-Every 30 seconds — and once more on the way down — the tracker sends each player's delta since the last report: `{"kills": 3, "top_speed": 41.2}`. The site merges each by its kind.
+Every 30 seconds, and once more on the way down, the tracker sends each player's delta since the last report: `{"kills": 3, "top_speed": 41.2}`. The site merges each by its kind.
 
 ## The other surface
 
