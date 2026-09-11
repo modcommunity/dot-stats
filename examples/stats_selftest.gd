@@ -12,6 +12,8 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
+const CHECKS := 90
+
 var _passed := 0
 var _failed := 0
 
@@ -467,9 +469,22 @@ func _check(what: String, passed: bool, res: DotResult = null) -> void:
 
 
 func _finish() -> void:
-	if DotPlatform.is_headless():
-		await get_tree().process_frame
-		get_tree().quit(1 if _failed > 0 else 0)
+	if not DotPlatform.is_headless():
+		return
+
+	await get_tree().process_frame
+
+	# The total the section counter cannot be. A runtime error inside a section aborts
+	# that function, and a counter is satisfied because the section had already
+	# announced itself. See docs/testing.md.
+	if _passed + _failed != CHECKS:
+		print("ERROR: %d checks ran, %d expected. A section aborted part-way." % [
+			_passed + _failed, CHECKS
+		])
+		get_tree().quit(1)
+		return
+
+	get_tree().quit(1 if _failed > 0 else 0)
 
 
 func _line(text: String) -> void:
