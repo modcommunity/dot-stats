@@ -69,3 +69,7 @@ godot --headless --path . res://examples/stats_selftest.tscn
 ```
 
 See [CLAUDE.md](CLAUDE.md) for the design, the two surfaces, and what is deliberately left out.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
