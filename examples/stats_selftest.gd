@@ -14,8 +14,16 @@ extends Node
 
 const CHECKS := 90
 
+## Sections entered against sections that ran to their last line, and against this. A
+## runtime error inside a section aborts that function and nothing says so; a section that
+## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
+## total is the other half — see docs/testing.md.
+const SECTIONS := 12
+
 var _passed := 0
 var _failed := 0
+var _entered := 0
+var _completed := 0
 
 
 ## A stand-in for dot-auth's DotBackboneClient, which this addon never names.
@@ -96,7 +104,7 @@ func _run() -> void:
 # --- Kinds ------------------------------------------------------------------
 
 func _test_kinds() -> void:
-	_line("kinds")
+	_section("kinds")
 
 	var counter := DotStatsDef.make(&"kills", DotStatsDef.Kind.COUNTER)
 	var gauge := DotStatsDef.make(&"level", DotStatsDef.Kind.GAUGE)
@@ -121,12 +129,13 @@ func _test_kinds() -> void:
 	_check("a value formats with its unit", best.format_value(41.26) == "41.3 m/s")
 
 	_line("")
+	_done()
 
 
 # --- Schema -----------------------------------------------------------------
 
 func _test_schema() -> void:
-	_line("schema")
+	_section("schema")
 
 	var schema := DotStatsSchema.new()
 	schema.define(&"kills")
@@ -164,12 +173,13 @@ func _test_schema() -> void:
 	_check("the cap refuses one too many", not capped.ok and capped.code() == DotError.CODE_QUOTA)
 
 	_line("")
+	_done()
 
 
 # --- Values -----------------------------------------------------------------
 
 func _test_values() -> void:
-	_line("values")
+	_section("values")
 
 	var schema := DotStatsSchema.new()
 	var kills := schema.define(&"kills")
@@ -199,6 +209,7 @@ func _test_values() -> void:
 	_check("a dictionary reads numerics only", read.size() == 2 and read.get_value(&"kills") == 4.0)
 
 	_line("")
+	_done()
 
 
 # --- Tracker ----------------------------------------------------------------
@@ -214,7 +225,7 @@ func _make_schema() -> DotStatsSchema:
 
 
 func _test_tracker() -> void:
-	_line("tracker")
+	_section("tracker")
 
 	var tracker := DotStatsTracker.new()
 	tracker.name = "Tracker"
@@ -261,12 +272,13 @@ func _test_tracker() -> void:
 
 	tracker.queue_free()
 	_line("")
+	_done()
 
 
 # --- Reporter ---------------------------------------------------------------
 
 func _test_reporter_coalesces() -> void:
-	_line("reporter coalesces")
+	_section("reporter coalesces")
 
 	var backbone := FakeBackbone.new()
 	var reporter := DotStatsReporter.with_client(backbone, _make_schema())
@@ -297,10 +309,11 @@ func _test_reporter_coalesces() -> void:
 	_check("unpublished and unknown stats queue nothing", reporter.queued() == 0)
 
 	_line("")
+	_done()
 
 
 func _test_reporter_keeps_its_queue() -> void:
-	_line("reporter keeps its queue")
+	_section("reporter keeps its queue")
 
 	var backbone := FakeBackbone.new()
 	var reporter := DotStatsReporter.with_client(backbone, _make_schema())
@@ -333,10 +346,11 @@ func _test_reporter_keeps_its_queue() -> void:
 	_check("no client is a state error, not a crash", not none.ok and none.code() == DotError.CODE_STATE)
 
 	_line("")
+	_done()
 
 
 func _test_reporter_bounds_its_queue() -> void:
-	_line("reporter bounds its queue")
+	_section("reporter bounds its queue")
 
 	var reporter := DotStatsReporter.with_client(FakeBackbone.new(), _make_schema())
 	reporter.player_limit = 10
@@ -355,10 +369,11 @@ func _test_reporter_bounds_its_queue() -> void:
 	_check("an active player survives the trim", reporter._queue.has(&"p30") and not reporter._queue.has(&"p31"))
 
 	_line("")
+	_done()
 
 
 func _test_reporter_refuses_account_ids() -> void:
-	_line("reporter refuses account ids")
+	_section("reporter refuses account ids")
 
 	var reporter := DotStatsReporter.with_client(FakeBackbone.new(), _make_schema())
 
@@ -374,10 +389,11 @@ func _test_reporter_refuses_account_ids() -> void:
 	_check("an empty id is not a player", not DotStatsReporter.is_player_id(""))
 
 	_line("")
+	_done()
 
 
 func _test_reporter_define() -> void:
-	_line("reporter declares")
+	_section("reporter declares")
 
 	var backbone := FakeBackbone.new()
 	var reporter := DotStatsReporter.with_client(backbone, _make_schema())
@@ -401,12 +417,13 @@ func _test_reporter_define() -> void:
 	_check("nothing published is nothing to declare", not nothing.ok and nothing.code() == DotError.CODE_STATE)
 
 	_line("")
+	_done()
 
 
 # --- The whole loop ---------------------------------------------------------
 
 func _test_tracker_reports_on_leave() -> void:
-	_line("tracker reports")
+	_section("tracker reports")
 
 	var backbone := FakeBackbone.new()
 	var tracker := DotStatsTracker.new()
@@ -452,9 +469,20 @@ func _test_tracker_reports_on_leave() -> void:
 
 	tracker.queue_free()
 	_line("")
+	_done()
 
 
 # --- Helpers ----------------------------------------------------------------
+
+func _section(title: String) -> void:
+	_entered += 1
+	print(title)
+
+
+## A section reached its last line. See [constant SECTIONS].
+func _done() -> void:
+	_completed += 1
+
 
 func _check(what: String, passed: bool, res: DotResult = null) -> void:
 	if passed:
@@ -474,6 +502,13 @@ func _finish() -> void:
 
 	await get_tree().process_frame
 
+	print("%d of %d sections ran to their last line" % [_completed, _entered])
+	if _entered != SECTIONS or _completed != _entered:
+		print("ERROR: %d sections entered and %d completed, %d expected. One aborted or was skipped." % [
+			_entered, _completed, SECTIONS
+		])
+		get_tree().quit(1)
+		return
 	# The total the section counter cannot be. A runtime error inside a section aborts
 	# that function, and a counter is satisfied because the section had already
 	# announced itself. See docs/testing.md.
@@ -494,7 +529,7 @@ func _line(text: String) -> void:
 # --- Reading ----------------------------------------------------------------
 
 func _test_reporter_reads() -> void:
-	_line("reporter reads")
+	_section("reporter reads")
 
 	var backbone := FakeBackbone.new()
 	var reporter := DotStatsReporter.with_client(backbone, _make_schema())
@@ -519,12 +554,13 @@ func _test_reporter_reads() -> void:
 	_check("no client is a state error", not none.ok and none.code() == DotError.CODE_STATE)
 
 	_line("")
+	_done()
 
 
 # --- The player's own client ------------------------------------------------
 
 func _test_client() -> void:
-	_line("client")
+	_section("client")
 
 	var app := FakeApp.new()
 	var mine := DotStatsClient.new()
@@ -574,3 +610,4 @@ func _test_client() -> void:
 
 	mine.queue_free()
 	_line("")
+	_done()
