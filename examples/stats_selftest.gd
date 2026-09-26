@@ -12,7 +12,7 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 90
+const CHECKS := 92
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -264,9 +264,18 @@ func _test_tracker() -> void:
 	tracker.record(&"p2", &"deaths", 1.0)
 	_check("a player not begun is begun", tracker.has_player(&"p2"))
 
+	# An unpublished stat, which is what the reporter warns about when it is queued.
+	tracker.record(&"p1", &"secret", 5.0)
 	var summary := tracker.end(&"p1")
 	_check("ending returns the session", summary.get_value(&"kills") == 2.0)
 	_check("and forgets the player", not tracker.has_player(&"p1"))
+	# Reporting is off: a leave queues nothing and warns about nothing. It used to fill a
+	# queue no flush would send and log "will not be reported why=unpublished" per leave.
+	_check("with reporting off, a leave queues nothing", tracker.reporter.queued() == 0)
+	_check(
+		"and says nothing about stats it was never going to report",
+		(tracker.reporter.get("_warned") as Dictionary).is_empty()
+	)
 
 	_check("describe() answers", tracker.describe().has("players"))
 

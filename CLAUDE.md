@@ -126,6 +126,8 @@ Three properties the reporter has, each the answer to a way a report gets lost:
   stat in a reading is skipped with a warning the first time, because the backbone
   would refuse the whole batch for it.
 
+**And `report_to_backbone = false` means the reporter is never touched.** Until 2026-09-25 it meant only that nothing was *flushed*: `end()` still checkpointed a leaving player's delta into the queue, which then held rows no flush would ever send, and the warning above fired — `will not be reported why=unpublished` — on the first leave of every server that had left reporting off, which is the default. `_checkpoint` now clears the delta and returns when reporting is off, and the `tracker` section asserts a leave queues nothing and warns about nothing.
+
 ### Which credential
 
 Nothing in a body names an app or a server: **the token decides whose stats these
@@ -195,7 +197,7 @@ find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
 
-# 89 checks, all offline. Exits non-zero on any failure.
+# 92 checks, all offline. Exits non-zero on any failure.
 godot --headless --path . res://examples/stats_selftest.tscn
 ```
 

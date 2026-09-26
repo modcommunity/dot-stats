@@ -255,6 +255,14 @@ func _checkpoint(player_id: StringName, row: Dictionary) -> void:
 	var delta: DotStatsValues = row["delta"]
 	if delta.is_empty():
 		return
+	if not report_to_backbone:
+		# Reporting off queues NOTHING and says nothing. Until 2026-09-25 a player leaving
+		# ([method end]) still pushed their delta into a queue no flush would ever send,
+		# and the reporter warned "will not be reported why=unpublished" for every
+		# unpublished stat — a WRN on every leave of every server that had simply
+		# switched reporting off, which is the default. Cleared so it cannot grow.
+		delta.clear()
+		return
 	var queued := reporter.queue(player_id, str(row["name"]), delta.to_dictionary())
 	if not queued.ok:
 		DotLog.warn(
