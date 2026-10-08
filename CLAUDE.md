@@ -67,6 +67,11 @@ addons/dot_stats/
     dot_stats_values.gd   One player's values, merged by a schema. Refuses NaN.
   net/
     dot_stats_reporter.gd Coalesces per player, batches, keeps its queue on failure.
+  store/
+    dot_stats_store.gd        Lifetime values per player (abstract). Ordering from the kind.
+    dot_stats_store_memory.gd The reference implementation.
+    dot_stats_store_sql.gd    The same in SQLite, Postgres or MySQL, via dot-sql.
+    dot_stats_sql_schema.gd   Its table as a dot-sql spec, its statements.
   runtime/
     dot_stats_tracker.gd  The Node: begin/record/end per player, a timer, a final flush.
     dot_stats_client.gd   The other surface: a player reporting their OWN figures.
@@ -77,6 +82,18 @@ HUD, never sent) and the **delta** since the last flush (what leaves). `flush()`
 declares the schema once, moves every delta into the reporter and sends. `end()`
 queues a player's last delta before forgetting them, and `_exit_tree` flushes, so a
 server that stops between reports does not lose the last interval of everybody's play.
+
+## Lifetime totals on the server: the store
+
+Until 2026-10-08 the tracker kept a session and a delta and nothing else; the totals lived only on the backbone. A server without one — a LAN, a community that has not linked an integration, a game in development — lost every number at the end of every session. `DotStatsTracker.store` is the answer: an optional `DotStatsStore` (untyped, so a game can hand it anything with the same `merge`), fed **the same deltas at the same moment** the reporter is — at a checkpoint: a flush, a leave, shutdown. So a server with both keeps both, and the two cannot disagree about which readings they were told of. With only a store the flush timer still runs; assign it before `add_child`.
+
+**The rule stays in one place.** Every store folds with `DotStatsValues.merge_from` / `DotStatsDef.merge`. The obvious SQL store spells the rule in SQL — `amount + ?`, `GREATEST`, `LEAST` (which SQLite calls `max` and `min`) — and that is a fifth copy of the rule above, in a fourth language, per dialect. `DotStatsStoreSql` instead reads the player's rows, folds them with `DotStatsDef.merge`, and writes the result **guarded by a `revision` column**: an UPDATE names the revision it read, and one that finds no row lost a race with another server and re-reads, up to `max_attempts`. A first value is a plain INSERT, never an upsert, so a row another server made in between is a duplicate key and a re-read rather than an overwrite. The suite's `RacingDriver` fails both checks with the guard removed, and the live scene has two stores write one player at once against each database (Postgres 17 lost 3 races, MariaDB 11.8 lost 18, and both totals were exact).
+
+**A failure part-way names what did not land** (`error.context["unapplied"]`), because the store writes stat by stat and the tracker re-queues: re-queuing the whole delta after half of it landed adds those counters twice. The tracker's pending set is the store's half of the reporter's queue, with the same two properties — a failed write keeps what it had, and is put back *under* anything checkpointed since, so a gauge ends at its newest reading.
+
+**Ordering comes from the kind**: `top()` and `rank_of()` rank a `LOWEST` ascending and everything else descending, and a tie shares a rank (1, 2, 2, 4). A ranking of an undeclared stat is refused, not empty — it has no direction, and guessing one renders "fewest deaths" upside down.
+
+The store reaches dot-sql **duck-typed**, so the addon names no dot-sql class and parses without it; dot-sql is linked into `addons/` (gitignored) only for the suites. The table is `DotStatsSqlSchema`'s spec (`SqlSchema`, because `DotStatsSchema` is already the set of definitions).
 
 ## Two surfaces, and which to use
 
@@ -197,8 +214,12 @@ find . -name '*.gd' -not -path './.godot/*' | while read f; do
     godot --headless --path . --check-only --script "res://${f#./}"
 done
 
-# 92 checks, all offline. Exits non-zero on any failure.
+# 15 sections, 138 checks, all offline. Exits non-zero on any failure.
 godot --headless --path . res://examples/stats_selftest.tscn
+
+# The SQL store against real databases, through dot-sql's gateway. SQLite always;
+# Postgres and MySQL/MariaDB when DOT_SQL_PG_DSN / DOT_SQL_MYSQL_DSN are set.
+../dot-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn   # 13 checks per dialect
 ```
 
 The backbone client is faked one level above HTTP — a class with a

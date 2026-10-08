@@ -32,6 +32,12 @@ extends Node
 ## reporting the same player, or one server restarting mid-session, add up
 ## rather than overwrite. The session set is for the game's own HUD and is never
 ## sent.
+##
+## [b]And optionally a store of lifetime totals, beside the backbone or instead of it.[/b]
+## With [member store] set, every delta the tracker would report is also merged into the
+## store at the same moment — a checkpoint (a flush, a leave, shutdown) — by the same rule.
+## A server with no backbone still keeps every player's totals; one with both keeps both,
+## and the two cannot disagree about which readings they were told of.
 
 const CHANNEL := "stats"
 
@@ -43,6 +49,9 @@ signal refused(player_id: StringName, stat_id: StringName, reason: String)
 
 ## Emitted after each flush, successful or not.
 signal reported(result: DotResult)
+
+## Emitted after each write to [member store], successful or not.
+signal stored(result: DotResult)
 
 @export_group("Stats")
 
@@ -67,11 +76,26 @@ signal reported(result: DotResult)
 
 var reporter := DotStatsReporter.new()
 
+## Where lifetime totals are kept: a [DotStatsStore], or anything with the same
+## [code]merge(player_id, values, schema, player_name)[/code] coroutine. Null keeps none.
+##
+## [b]Untyped on purpose[/b], so a game can hand it its own store — one that writes through
+## a service it already has — without subclassing anything. Assign it before the tracker
+## enters the tree, so the flush timer is started for it; a store that suspends must be
+## opened first.
+var store = null
+
 ## player id -> {"name": String, "session": DotStatsValues, "delta": DotStatsValues}
 var _players: Dictionary = {}
 var _timer: Timer = null
 var _started: bool = false
 var _defined: bool = false
+
+## player id -> {"name": String, "values": DotStatsValues}: deltas checkpointed for the store
+## and not yet written to it. The store's half of what the reporter's queue is.
+var _store_pending: Dictionary = {}
+var _store_writing: bool = false
+var _store_failing: bool = false
 
 
 func _ready() -> void:
@@ -102,8 +126,10 @@ func start() -> DotResult:
 		return valid
 
 	reporter.schema = schema
+	if store != null and store.get("schema") == null:
+		store.set("schema", schema)
 
-	if report_to_backbone and report_interval > 0.0:
+	if (report_to_backbone or store != null) and report_interval > 0.0:
 		_timer = Timer.new()
 		_timer.name = "ReportTimer"
 		_timer.wait_time = report_interval
@@ -120,6 +146,7 @@ func start() -> DotResult:
 			"stats": schema.size(),
 			"published": schema.published().size(),
 			"reporting": report_to_backbone,
+			"store": store != null,
 		}
 	)
 
@@ -127,10 +154,14 @@ func start() -> DotResult:
 
 
 func _exit_tree() -> void:
-	if not _started or not report_to_backbone:
+	if not _started or (not report_to_backbone and store == null):
 		return
 	_checkpoint_all()
-	if reporter.queued() > 0:
+	if store != null:
+		# Awaited, like the reporter's: a server that stops between flushes does not lose
+		# the last interval of everybody's lifetime totals either.
+		await flush_store()
+	if report_to_backbone and reporter.queued() > 0:
 		# A final, awaited flush so a server that stops between reports does not
 		# lose the last interval of every player's play.
 		await reporter.flush_all()
@@ -222,9 +253,16 @@ func record(player_id: StringName, stat_id: StringName, value: float = 1.0) -> D
 ##
 ## What the timer calls. Callable directly at a round end so the board on the
 ## site moves when the round does rather than up to an interval later.
+##
+## With a [member store], the same deltas are written to it first. The result is the
+## reporter's when reporting is on and the store's when only the store is; the store's is
+## also emitted as [signal stored].
 func flush() -> DotResult:
 	if not report_to_backbone:
-		return DotResult.success(0)
+		if store == null:
+			return DotResult.success(0)
+		_checkpoint_all()
+		return await flush_store()
 
 	if define_on_start and not _defined and reporter.is_available():
 		var defined := await reporter.define()
@@ -240,6 +278,8 @@ func flush() -> DotResult:
 			)
 
 	_checkpoint_all()
+	if store != null:
+		await flush_store()
 	var res := await reporter.flush_all()
 	reported.emit(res)
 	return res
@@ -255,6 +295,10 @@ func _checkpoint(player_id: StringName, row: Dictionary) -> void:
 	var delta: DotStatsValues = row["delta"]
 	if delta.is_empty():
 		return
+	if store != null:
+		# The same delta the reporter is about to be handed, at the same moment, so the
+		# store and the backbone are told of exactly the same readings.
+		_pend_for_store(player_id, str(row["name"]), delta)
 	if not report_to_backbone:
 		# Reporting off queues NOTHING and says nothing. Until 2026-09-25 a player leaving
 		# ([method end]) still pushed their delta into a queue no flush would ever send,
@@ -273,6 +317,90 @@ func _checkpoint(player_id: StringName, row: Dictionary) -> void:
 	delta.clear()
 
 
+## Writes every checkpointed delta to [member store]. Returns how many players were written.
+##
+## [b]A failed write keeps what did not land[/b], like the reporter's queue: a store that is
+## down for ten minutes costs ten minutes of latency, not ten minutes of totals. What did not
+## land is the store's [code]error.context["unapplied"][/code] when it says, and the whole
+## delta when it does not.
+##
+## [b]Taken out before the write and put back UNDER anything newer.[/b] A player keeps
+## playing while their write is in flight, and a newer checkpoint lands in the pending set
+## meanwhile. Putting the failed older one back on top of it would hand a gauge its older
+## reading; folding the newer one into the older keeps the order the readings happened in,
+## for every kind. One write runs at a time; a second call while one is in flight returns
+## and leaves its players for the next.
+func flush_store() -> DotResult:
+	if store == null or _store_pending.is_empty() or _store_writing:
+		return DotResult.success(0)
+
+	_store_writing = true
+	var written := 0
+	var failure: DotResult = null
+
+	for player_id in _store_pending.keys():
+		var row: Dictionary = _store_pending[player_id]
+		_store_pending.erase(player_id)
+
+		var res: DotResult = await store.merge(player_id, row["values"], schema, str(row["name"]))
+		if res != null and res.ok:
+			written += 1
+			continue
+
+		failure = res if res != null else DotResult.fail(DotError.CODE_INTERNAL, "A stats store returned nothing.")
+		var unapplied: DotStatsValues = row["values"]
+		if failure.error != null and failure.error.context.get("unapplied") is Dictionary:
+			unapplied = DotStatsValues.from_dictionary(failure.error.context["unapplied"])
+		_restore_for_store(player_id, str(row["name"]), unapplied)
+		# A store that failed one player is very likely down for the next; the rest wait
+		# for the next flush rather than each failing in turn.
+		break
+
+	_store_writing = false
+
+	var result := failure if failure != null else DotResult.success(written)
+	if failure != null:
+		# WARN on the first failure and DEBUG while it lasts: nothing is lost yet, and a
+		# store that is down for an hour would otherwise bury the line that said so.
+		var fields := {"why": failure.error.message if failure.error != null else "", "players": _store_pending.size()}
+		if _store_failing:
+			DotLog.debug(CHANNEL, "lifetime stats still not saving", fields)
+		else:
+			DotLog.warn(CHANNEL, "lifetime stats are not saving; they will be retried", fields)
+		_store_failing = true
+	elif _store_failing and written > 0:
+		_store_failing = false
+		DotLog.info(CHANNEL, "lifetime stats are saving again", {"players": written})
+
+	stored.emit(result)
+	return result
+
+
+## How many players have deltas waiting for [member store].
+func store_pending() -> int:
+	return _store_pending.size()
+
+
+func _pend_for_store(player_id: StringName, player_name: String, delta: DotStatsValues) -> void:
+	if not _store_pending.has(player_id):
+		_store_pending[player_id] = {"name": player_name, "values": DotStatsValues.new()}
+	var row: Dictionary = _store_pending[player_id]
+	if player_name != "":
+		row["name"] = player_name
+	(row["values"] as DotStatsValues).merge_from(delta, schema)
+
+
+## Puts back a write that failed, with anything checkpointed since folded in ON TOP of it.
+func _restore_for_store(player_id: StringName, player_name: String, older: DotStatsValues) -> void:
+	var restored := older.duplicate_values()
+	var newer: Variant = _store_pending.get(player_id)
+	if newer is Dictionary:
+		restored.merge_from((newer as Dictionary)["values"], schema)
+		if str((newer as Dictionary)["name"]) != "":
+			player_name = str((newer as Dictionary)["name"])
+	_store_pending[player_id] = {"name": player_name, "values": restored}
+
+
 func _on_report_due() -> void:
 	await flush()
 
@@ -285,6 +413,8 @@ func describe() -> Dictionary:
 		"interval": report_interval,
 		"defined": _defined,
 		"reporter": reporter.describe(),
+		"store": store.describe() if store != null and store.has_method("describe") else null,
+		"store_pending": _store_pending.size(),
 	}
 
 

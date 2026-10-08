@@ -46,6 +46,18 @@ tracker.end(player_key)                 # reports the last delta, forgets them
 
 Every 30 seconds, and once more on the way down, the tracker sends each player's delta since the last report: `{"kills": 3, "top_speed": 41.2}`. The site merges each by its kind.
 
+## Keeping lifetime totals on the server
+
+```gdscript
+var store := DotStatsStoreSql.new(driver)   # any dot-sql driver; or DotStatsStoreMemory
+await store.open()                          # creates or migrates its table
+tracker.store = store                       # before add_child, so the timer runs for it
+```
+
+With a store, every delta the tracker reports is also merged into the store at the same moment, by the same rule, so a server with no backbone still keeps every player's totals and one with both keeps both. The store answers `values_for(player)`, `top(stat, limit, offset)` ordered by the stat's kind (a `LOWEST` ascending, the rest descending, a tie sharing its rank), `rank_of(stat, player)` and `remove_player(player)`.
+
+`DotStatsStoreSql` speaks SQLite, Postgres and MySQL/MariaDB through [dot-sql](https://github.com/modcommunity/dot-sql), reached duck-typed so dot-stats parses without it. The new total is computed by `DotStatsDef.merge`, the same function everything else uses, and written guarded by a revision, so two servers sharing the table add up rather than overwrite. A write that fails keeps what did not land for the next flush, and never adds a counter twice.
+
 ## The other surface
 
 A player's own client reports its own figures, with the player's token and no integration credential anywhere near it:
@@ -65,7 +77,10 @@ Both land on the same rows, because a client files under the member's key for th
 ## Validating
 
 ```bash
-godot --headless --path . res://examples/stats_selftest.tscn
+godot --headless --path . res://examples/stats_selftest.tscn   # 15 sections, 138 checks
+
+# the SQL store against real SQLite, Postgres and MariaDB (dot-sql linked in addons/)
+../dot-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn
 ```
 
 See [CLAUDE.md](CLAUDE.md) for the design, the two surfaces, and what is deliberately left out.
