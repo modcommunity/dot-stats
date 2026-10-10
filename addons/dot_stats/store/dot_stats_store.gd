@@ -13,7 +13,7 @@ extends RefCounted
 ## [b]The merge rule is not written here.[/b] Every implementation folds a delta in with
 ## [method DotStatsDef.merge] — the addon's one rule, which the reporter and the backbone
 ## also follow. A store that spelled it again in SQL (`amount + ?`, `GREATEST`, `LEAST`) would
-## be a fifth copy of the rule in a fourth language, and the CLAUDE.md is explicit about what
+## be a fifth copy of the rule in a fourth language, and docs/design.md is explicit about what
 ## two copies disagreeing costs: a number that is wrong without anything having failed.
 ##
 ## [b]Everything returns a [DotResult] and every method may be a coroutine[/b]; always

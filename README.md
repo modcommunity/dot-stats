@@ -83,7 +83,7 @@ godot --headless --path . res://examples/stats_selftest.tscn   # 15 sections, 13
 ../dot-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn
 ```
 
-See [CLAUDE.md](CLAUDE.md) for the design, the two surfaces, and what is deliberately left out.
+See [docs/](docs/README.md) for the design, the two surfaces, and what is deliberately left out.
 
 ## Licence
 
