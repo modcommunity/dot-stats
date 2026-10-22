@@ -1,0 +1,19 @@
+# comments
+# Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
+addons/dot_stats/core/dot_stats_def.gd::long_block	5
+addons/dot_stats/core/dot_stats_schema.gd::long_block	2
+addons/dot_stats/core/dot_stats_values.gd::long_block	4
+addons/dot_stats/dot_stats_plugin.gd::long_block	1
+addons/dot_stats/net/dot_stats_reporter.gd::banner	1
+addons/dot_stats/net/dot_stats_reporter.gd::long_block	6
+addons/dot_stats/runtime/dot_stats_client.gd::long_block	1
+addons/dot_stats/runtime/dot_stats_tracker.gd::banner	3
+addons/dot_stats/runtime/dot_stats_tracker.gd::history	1
+addons/dot_stats/runtime/dot_stats_tracker.gd::long_block	7
+addons/dot_stats/store/dot_stats_sql_schema.gd::long_block	4
+addons/dot_stats/store/dot_stats_store.gd::long_block	2
+addons/dot_stats/store/dot_stats_store_sql.gd::long_block	1
+examples/stats_selftest.gd::banner	10
+examples/stats_selftest.gd::history	1
+examples/stats_selftest.gd::long_block	2
+examples/stats_sql_live.gd::long_block	2
