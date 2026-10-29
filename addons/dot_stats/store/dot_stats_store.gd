@@ -65,6 +65,10 @@ func merge(
 		var reading := float(incoming.values[id])
 		if rules.has(id) and is_finite(reading):
 			known.values[id] = reading
+	for key in incoming.cells:
+		var reading := float(incoming.cells[key])
+		if rules.has(StringName(str(key).split("|")[0])) and is_finite(reading):
+			known.cells[str(key)] = reading
 
 	return await _merge(player_id, known, rules, player_name)
 

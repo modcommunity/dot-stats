@@ -26,7 +26,7 @@ const DEFAULT_TABLE := "dot_stats_values"
 ## by editing one.
 const MIGRATION_COMPONENT := "dot_stats"
 
-const COLUMNS := ["player", "stat", "amount", "player_name", "revision", "updated_at"]
+const COLUMNS := ["player", "stat", "dim", "amount", "player_name", "revision", "updated_at"]
 
 
 ## One row per player per stat.
@@ -39,6 +39,16 @@ const COLUMNS := ["player", "stat", "amount", "player_name", "revision", "update
 ## - [b]`player_name` is on every row[/b], denormalised, so a ranking renders without a
 ##   join to a table this addon does not have. It is the name the player last had.
 static func table_spec(table: String = DEFAULT_TABLE) -> Dictionary:
+	var spec := _spec_v1(table)
+	var columns: Array = spec["columns"]
+	columns.insert(2, {"name": "dim", "type": "key", "null": false, "default": ""})
+	spec["primary_key"] = ["player", "stat", "dim"]
+	spec["indexes"] = [{"name": "top_dim_idx", "columns": ["stat", "dim", "amount"]}]
+	return spec
+
+
+## The table as phase 1a left it, which a database may still hold; migration step one.
+static func _spec_v1(table: String) -> Dictionary:
 	return {
 		"name": table,
 		"columns": [
@@ -59,18 +69,38 @@ static func table_spec(table: String = DEFAULT_TABLE) -> Dictionary:
 ## Every schema change, in order, for dot-sql's migrator. Step N brings version N to N+1.
 static func migration_steps(table: String = DEFAULT_TABLE) -> Array:
 	return [
-		[table_spec(table)],
+		[_spec_v1(table)],
+		[_upgrade_dim.bind(table)],
 	]
 
 
+## Adds `dim` ('' = the player's total, else `axis:value`) to the key. A key cannot be altered
+## portably, so the rows are copied into a new table that replaces the old one.
+static func _upgrade_dim(driver: Object, table: String) -> DotResult:
+	var fresh := table + "_dim"
+	var made: DotResult = await driver.ensure_table(table_spec(fresh))
+	if not made.ok:
+		return made
+	for sql in [
+		"INSERT INTO %s (player, stat, dim, amount, player_name, revision, updated_at) "
+		% fresh + "SELECT player, stat, '', amount, player_name, revision, updated_at FROM %s" % table,
+		"DROP TABLE %s" % table,
+		"ALTER TABLE %s RENAME TO %s" % [fresh, table],
+	]:
+		var step: DotResult = await driver.execute(sql)
+		if not step.ok:
+			return step
+	return DotResult.success(true)
+
+
 static func select_player(table: String) -> String:
-	return "SELECT stat, amount, revision FROM %s WHERE player = ?" % table
+	return "SELECT stat, dim, amount, revision FROM %s WHERE player = ?" % table
 
 
 ## A plain insert, never an upsert: a duplicate key here means another writer created the
 ## row since it was read, and must fail so the merge re-reads rather than overwriting it.
 static func insert_row(table: String) -> String:
-	return "INSERT INTO %s (%s) VALUES (?, ?, ?, ?, ?, ?)" % [table, ", ".join(COLUMNS)]
+	return "INSERT INTO %s (%s) VALUES (?, ?, ?, ?, ?, ?, ?)" % [table, ", ".join(COLUMNS)]
 
 
 ## Writes a merged value only if the row is still at the revision it was read at.
@@ -81,7 +111,7 @@ static func update_row(table: String) -> String:
 	return (
 		"UPDATE %s SET amount = ?, player_name = COALESCE(NULLIF(?, ''), player_name), "
 		+ "revision = revision + 1, updated_at = ? "
-		+ "WHERE player = ? AND stat = ? AND revision = ?"
+		+ "WHERE player = ? AND stat = ? AND dim = ? AND revision = ?"
 	) % table
 
 
@@ -93,16 +123,16 @@ static func update_row(table: String) -> String:
 static func select_top(table: String, ascending: bool) -> String:
 	return (
 		"SELECT s.player, s.player_name, s.amount, "
-		+ "(SELECT COUNT(*) FROM %s b WHERE b.stat = s.stat AND b.amount %s s.amount) + 1 AS place "
-		+ "FROM %s s WHERE s.stat = ? ORDER BY s.amount %s, s.player ASC LIMIT ? OFFSET ?"
+		+ "(SELECT COUNT(*) FROM %s b WHERE b.stat = s.stat AND b.dim = '' AND b.amount %s s.amount) + 1 AS place "
+		+ "FROM %s s WHERE s.stat = ? AND s.dim = '' ORDER BY s.amount %s, s.player ASC LIMIT ? OFFSET ?"
 	) % [table, "<" if ascending else ">", table, "ASC" if ascending else "DESC"]
 
 
 ## One player's rank on one stat; no row when they hold none.
 static func select_rank(table: String, ascending: bool) -> String:
 	return (
-		"SELECT (SELECT COUNT(*) FROM %s b WHERE b.stat = s.stat AND b.amount %s s.amount) + 1 AS place "
-		+ "FROM %s s WHERE s.stat = ? AND s.player = ?"
+		"SELECT (SELECT COUNT(*) FROM %s b WHERE b.stat = s.stat AND b.dim = '' AND b.amount %s s.amount) + 1 AS place "
+		+ "FROM %s s WHERE s.stat = ? AND s.dim = '' AND s.player = ?"
 	) % [table, "<" if ascending else ">", table]
 
 

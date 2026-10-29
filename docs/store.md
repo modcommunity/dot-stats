@@ -22,4 +22,4 @@ Every store folds with `DotStatsValues.merge_from` / `DotStatsDef.merge`. The ob
 
 ## dot-sql, duck-typed
 
-The store reaches dot-sql **duck-typed**, so the addon names no dot-sql class and parses without it; dot-sql is linked into `addons/` (gitignored) only for the suites. The table is `DotStatsSqlSchema`'s spec (`SqlSchema`, because `DotStatsSchema` is already the set of definitions).
+The store reaches dot-sql **duck-typed**, so the addon names no dot-sql class and parses without it; dot-sql is linked into `addons/` (gitignored) only for the suites. The table is `DotStatsSqlSchema`'s spec (`SqlSchema`, because `DotStatsSchema` is already the set of definitions). A row is keyed (player, stat, dim): dim `""` is the total and `axis:value` a breakdown cell; migration step 2 rebuilds a v1 table with it.

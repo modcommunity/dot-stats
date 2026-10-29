@@ -61,7 +61,9 @@ A declaration may add `type`, `min`/`max`, `max_rate`, up to two `breakdowns` (w
 
 With `log_events` the tracker keeps append-only rows `{session, player, is_bot, stat, dims, value, t}` for `drain_events()`, and sessions are first-class (`session_info`, `session_ended`). A bot (`begin` meta `is_bot`, or `bot_check`) never carries a linked-user claim; `tmc_user` is kept only with `link_tmc_user`. The reporter freezes each batch under an id and resends it unchanged until acknowledged; define sends `source` in the site's upper case.
 
-Not yet sent: the reporter still posts the v1 shape. The site's `/stats/v2/submit` takes `sessions` and per-player `by` cells (the site's stats-site-contract.md); wiring that is the next step.
+The reporter posts `stats/v2/submit`: `{v:2, batch, server?, sessions, players:[{player, bot, name, session, user?, stats, by}]}` (the site's stats-site-contract.md). Session rows ride the next batch (200 per request) and are frozen with it; a bot never carries `user`. `max_rate` is enforced in the tracker as a per-player, per-stat token bucket (`refused(..., "over_rate")`, `clock` is injectable). `DotStatsClient` refuses a `source=server` stat. The SQL store keys a row by (player, stat, dim): dim `""` is the total, `axis:value` a breakdown cell.
+
+Seam: neither dot-game nor dot-bot calls the tracker yet. Whoever wires it passes `is_bot` in the `begin` meta or assigns `tracker.bot_check`.
 
 ## Deliberately not here
 

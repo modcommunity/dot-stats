@@ -44,12 +44,15 @@ extends RefCounted
 const CHANNEL := "stats.report"
 
 ## The integration endpoints, relative to `/api/integration/v1/`.
-const SUBMIT_PATH := "stats/submit"
+const SUBMIT_PATH := "stats/v2/submit"
 const DEFINE_PATH := "stats/define"
 
 ## The scope an integration needs. Named so a 403 can say which box to tick.
 const SCOPE_WRITE := "STATS_WRITE"
 const SCOPE_READ := "STATS_READ"
+
+## Sessions per request, as the site caps them.
+const SESSION_LIMIT := 200
 
 const PLAYER_PATH := "stats/player"
 const TOP_PATH := "stats/top"
@@ -63,6 +66,9 @@ var client: Object = null
 ## The stats readings are checked against and coalesced by.
 var schema: DotStatsSchema = null
 
+## The server id sent with a batch; 0 sends none (a server credential uses its own).
+var server_id: int = 0
+
 ## Players held between flushes. Past this the oldest player is dropped.
 ##
 ## A player's row is a few hundred bytes, so five hundred is a full server's
@@ -72,7 +78,10 @@ var player_limit: int = 500
 ## Players per request. Matched to what the backbone caps a submission at.
 var batch_limit: int = 50
 
-## player id -> {"name": String, "values": DotStatsValues}, in arrival order.
+## Sessions opened or closed and not yet acknowledged: session id -> wire row.
+var _sessions: Dictionary = {}
+
+## row key -> {"player", "name", "values": DotStatsValues, "bot", "session", "user"}, in arrival order.
 var _queue: Dictionary = {}
 
 var sent: int = 0
@@ -107,7 +116,9 @@ static func is_player_id(candidate: String) -> bool:
 ## does not publish, is skipped with a warning the first time — the backbone
 ## would refuse the whole batch for it, and a game that renamed a stat should
 ## find out from a log line rather than from every submission failing.
-func queue(player_id: StringName, player_name: String, readings: Dictionary) -> DotResult:
+func queue(
+	player_id: StringName, player_name: String, readings: Dictionary, meta: Dictionary = {}, cells: Dictionary = {}
+) -> DotResult:
 	if schema == null:
 		return DotResult.fail(DotError.CODE_STATE, "The reporter has no schema.")
 
@@ -118,7 +129,9 @@ func queue(player_id: StringName, player_name: String, readings: Dictionary) -> 
 			String(player_id).substr(0, 16)
 		)
 
-	var row: Dictionary = _queue.get(player_id, {})
+	var session := str(meta.get("session", ""))
+	var qkey := String(player_id) if session == "" else "%s|%s" % [player_id, session]
+	var row: Dictionary = _queue.get(qkey, {})
 	var values: DotStatsValues = row.get("values", DotStatsValues.new())
 	var accepted := 0
 
@@ -135,13 +148,23 @@ func queue(player_id: StringName, player_name: String, readings: Dictionary) -> 
 		if recorded.ok:
 			accepted += 1
 
+	for key in cells:
+		var def := schema.find(StringName(str(key).split("|")[0]))
+		if def == null or not def.publish or not (cells[key] is float or cells[key] is int):
+			continue
+		if values.record_cell(def, str(key), float(cells[key])):
+			accepted += 1
+
 	if accepted == 0:
 		return DotResult.success(0)
 
 	# Re-inserted rather than updated in place so a player who keeps scoring
 	# moves to the newest end and is the last to be dropped.
-	_queue.erase(player_id)
-	_queue[player_id] = {"name": player_name.substr(0, 64), "values": values}
+	_queue.erase(qkey)
+	_queue[qkey] = {
+		"player": String(player_id), "name": player_name.substr(0, 64), "values": values,
+		"bot": bool(meta.get("bot", false)), "session": session, "user": str(meta.get("user", "")),
+	}
 
 	while _queue.size() > player_limit:
 		var oldest: Variant = _queue.keys()[0]
@@ -166,9 +189,29 @@ func queued() -> int:
 	return _queue.size() + int(_inflight.get("players", []).size())
 
 
+## Records a session opening or closing; the newest row for an id wins. Sent with the next batch.
+func note_session(row: Dictionary, player_name: String = "") -> void:
+	var sid := str(row.get("session", ""))
+	if sid == "":
+		return
+	var wire := {
+		"session": sid, "player": str(row.get("player", "")), "bot": bool(row.get("is_bot", false)),
+		"name": player_name.substr(0, 64), "map": str(row.get("map", "")),
+		"joined": int(row.get("joined", 0)), "left": int(row["left"]) if row.has("left") else null,
+	}
+	_sessions.erase(sid)
+	_sessions[sid] = wire
+	while _sessions.size() > player_limit * 10:
+		_sessions.erase(_sessions.keys()[0])
+
+
+func _has_work() -> bool:
+	return not _queue.is_empty() or not _inflight.is_empty() or not _sessions.is_empty()
+
+
 ## Sends up to [member batch_limit] players. Removes them only on success.
 func flush() -> DotResult:
-	if _queue.is_empty() and _inflight.is_empty():
+	if not _has_work():
 		return DotResult.success(0)
 
 	if not is_available():
@@ -183,19 +226,33 @@ func flush() -> DotResult:
 		var players: Array = []
 		for i in range(mini(ids.size(), batch_limit)):
 			var row: Dictionary = _queue[ids[i]]
-			players.append({
-				"player": String(ids[i]),
-				"name": str(row["name"]),
-				"stats": (row["values"] as DotStatsValues).to_dictionary(),
-			})
+			var vals: DotStatsValues = row["values"]
+			var entry := {
+				"player": str(row["player"]), "bot": bool(row["bot"]), "name": str(row["name"]),
+				"stats": vals.to_dictionary(),
+			}
+			if row["session"] != "":
+				entry["session"] = row["session"]
+			if row["user"] != "" and not row["bot"]:
+				entry["user"] = row["user"]
+			if not vals.cells.is_empty():
+				entry["by"] = vals.to_by()
+			players.append(entry)
 			_queue.erase(ids[i])
+		var frozen: Array = []
+		for sid in _sessions.keys().slice(0, SESSION_LIMIT):
+			frozen.append(_sessions[sid].duplicate())
 		_batch_seq += 1
-		_inflight = {"batch": "%d-%d-%d" % [Time.get_unix_time_from_system(), randi(), _batch_seq], "players": players}
+		_inflight = {
+			"batch": "%d-%d-%d" % [Time.get_unix_time_from_system(), randi(), _batch_seq],
+			"players": players, "sessions": frozen,
+		}
 	var count: int = _inflight["players"].size()
 
-	var result: Variant = await client.call(
-		"post_integration", SUBMIT_PATH, {"players": _inflight["players"], "batch": _inflight["batch"]}
-	)
+	var body := {"v": 2, "batch": _inflight["batch"], "sessions": _inflight["sessions"], "players": _inflight["players"]}
+	if server_id > 0:
+		body["server"] = server_id
+	var result: Variant = await client.call("post_integration", SUBMIT_PATH, body)
 
 	if not (result is DotResult):
 		failures += 1
@@ -221,6 +278,10 @@ func flush() -> DotResult:
 			)
 		return typed
 
+	for s in _inflight.get("sessions", []):
+		# Kept when it changed meanwhile (an open session that has since closed).
+		if _sessions.get(s["session"]) == s:
+			_sessions.erase(s["session"])
 	_inflight = {}
 	sent += count
 	last_error = ""
@@ -232,7 +293,7 @@ func flush() -> DotResult:
 ## Flushes until the queue is empty or a flush fails.
 func flush_all() -> DotResult:
 	var total := 0
-	while not _queue.is_empty() or not _inflight.is_empty():
+	while _has_work():
 		var res := await flush()
 		if not res.ok:
 			return res
@@ -353,6 +414,7 @@ func describe() -> Dictionary:
 	return {
 		"available": is_available(),
 		"queued": _queue.size(),
+		"sessions": _sessions.size(),
 		"sent": sent,
 		"dropped": dropped,
 		"failures": failures,

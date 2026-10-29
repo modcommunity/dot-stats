@@ -45,6 +45,14 @@ func record(def: DotStatsDef, reading: float, dims: Dictionary = {}) -> DotResul
 	return DotResult.success(next)
 
 
+## Folds one breakdown cell ("stat|axis:value") in by the stat's rule. False when the reading is not finite.
+func record_cell(def: DotStatsDef, key: String, reading: float) -> bool:
+	if not is_finite(reading):
+		return false
+	cells[key] = def.merge(float(cells.get(key, 0.0)), reading, cells.has(key))
+	return true
+
+
 ## A held value of [param id] in [param cell] ("axis:value"), or the total when "".
 func get_cell(id: StringName, cell: String = "", fallback: float = 0.0) -> float:
 	var key := cell_key(id, cell)
@@ -130,7 +138,10 @@ static func from_dictionary(data: Dictionary) -> DotStatsValues:
 		if raw is float or raw is int:
 			var f := float(raw)
 			if is_finite(f):
-				v.values[StringName(str(key))] = f
+				if str(key).contains("|"):
+					v.cells[str(key)] = f
+				else:
+					v.values[StringName(str(key))] = f
 	return v
 
 

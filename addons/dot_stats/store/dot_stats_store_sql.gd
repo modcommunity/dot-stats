@@ -103,7 +103,12 @@ func close() -> void:
 func _merge(
 	player_id: StringName, incoming: DotStatsValues, p_schema: DotStatsSchema, player_name: String
 ) -> DotResult:
-	var pending: Dictionary = incoming.values.duplicate()
+	# Keyed by the cell key: a total is "stat", a breakdown cell "stat|axis:value".
+	var pending := {}
+	for id in incoming.values:
+		pending[String(id)] = float(incoming.values[id])
+	for key in incoming.cells:
+		pending[str(key)] = float(incoming.cells[key])
 
 	if not is_writable():
 		return _unapplied(DotResult.fail(DotError.CODE_STATE, "The database is not open."), pending)
@@ -132,16 +137,18 @@ func _merge(
 			if row is Dictionary:
 				var amount: Variant = DotStatsSqlSchema.number(row.get("amount"))
 				if amount != null:
-					held[str(row.get("stat", ""))] = {
+					held[DotStatsValues.cell_key(StringName(str(row.get("stat", ""))), str(row.get("dim", "")))] = {
 						"amount": amount, "revision": int(DotStatsSqlSchema.number(row.get("revision", 0)))
 					}
 
 		var now := int(Time.get_unix_time_from_system())
 
 		for stat in pending.keys():
-			var def := p_schema.find(stat)
-			var reading := float(pending[stat])
 			var key := String(stat)
+			var parts := key.split("|", true, 1)
+			var def := p_schema.find(StringName(parts[0]))
+			var dim: String = parts[1] if parts.size() > 1 else ""
+			var reading := float(pending[stat])
 
 			if held.has(key):
 				insert_failed.erase(stat)
@@ -153,7 +160,7 @@ func _merge(
 					continue
 				var updated: DotResult = await driver.execute(
 					DotStatsSqlSchema.update_row(table),
-					[next, player_name, now, player, key, held[key]["revision"]]
+					[next, player_name, now, player, parts[0], dim, held[key]["revision"]]
 				)
 				if not updated.ok:
 					return _unapplied(updated.wrap("Could not write a player's stat."), pending)
@@ -172,7 +179,7 @@ func _merge(
 			# makes everywhere else, rather than a special case here.
 			var inserted: DotResult = await driver.execute(
 				DotStatsSqlSchema.insert_row(table),
-				[player, key, def.merge(0.0, reading, false), player_name, 0, now]
+				[player, parts[0], dim, def.merge(0.0, reading, false), player_name, 0, now]
 			)
 			if inserted.ok:
 				pending.erase(stat)
@@ -200,7 +207,12 @@ func values_for(player_id: StringName) -> DotResult:
 		if row is Dictionary:
 			var amount: Variant = DotStatsSqlSchema.number(row.get("amount"))
 			if amount != null:
-				out.values[StringName(str(row.get("stat", "")))] = amount
+				var dim := str(row.get("dim", ""))
+				var stat := str(row.get("stat", ""))
+				if dim == "":
+					out.values[StringName(stat)] = amount
+				else:
+					out.cells[DotStatsValues.cell_key(StringName(stat), dim)] = amount
 	return DotResult.success(out)
 
 

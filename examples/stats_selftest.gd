@@ -12,13 +12,13 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 193
+const CHECKS := 213
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 18
+const SECTIONS := 19
 
 var _passed := 0
 var _failed := 0
@@ -101,6 +101,7 @@ func _run() -> void:
 	_test_v2_declarations()
 	_test_cells_and_events()
 	await _test_batch_ids()
+	await _test_v2_submit()
 
 	_line("")
 	_line("%d passed, %d failed" % [_passed, _failed])
@@ -721,14 +722,22 @@ func _test_sql_store() -> void:
 	_check("the store opens", opened.ok, opened)
 	_check(
 		"the table, its ranking index and its schema version",
-		driver.matching("CREATE TABLE IF NOT EXISTS dot_stats_values").size() == 1
+		driver.matching("CREATE TABLE IF NOT EXISTS dot_stats_values (").size() == 1
 			and driver.matching("CREATE INDEX IF NOT EXISTS dot_stats_values_top_idx").size() == 1
-			and driver.matching("INSERT INTO dot_sql_migrations").size() == 1
+			and driver.matching("INSERT INTO dot_sql_migrations").size() == 2
+	)
+
+	_check(
+		"the dim upgrade copies rows into a keyed-by-dim table and swaps it in",
+		driver.matching("CREATE TABLE IF NOT EXISTS dot_stats_values_dim").size() == 1
+			and driver.matching("SELECT player, stat, '', amount").size() == 1
+			and driver.matching("DROP TABLE dot_stats_values").size() == 1
+			and driver.matching("RENAME TO dot_stats_values").size() == 1
 	)
 
 	# A first merge: a read, then a plain INSERT per stat.
 	driver.clear()
-	driver.answers = {"SELECT stat, amount, revision": []}
+	driver.answers = {"SELECT stat, dim, amount, revision": []}
 	var first: DotResult = await store.merge(&"p'1", {"kills": 2, "best_lap": 12.5}, schema, "O'Brien")
 	var inserts := driver.matching("INSERT INTO dot_stats_values")
 	_check("a new player is read, then inserted", first.ok and inserts.size() == 2 and str(driver.statements[0]["sql"]).begins_with("SELECT"), first)
@@ -737,17 +746,40 @@ func _test_sql_store() -> void:
 		inserts.size() == 2 and not str(inserts[0]["sql"]).contains("ON CONFLICT")
 	)
 	_check(
-		"bound as player, stat, amount, name, revision 0, time",
-		inserts.size() == 2 and (inserts[0]["params"] as Array).slice(0, 5) == ["p'1", "kills", 2.0, "O'Brien", 0]
+		"bound as player, stat, dim, amount, name, revision 0, time",
+		inserts.size() == 2 and (inserts[0]["params"] as Array).slice(0, 6) == ["p'1", "kills", "", 2.0, "O'Brien", 0]
 			and not str(inserts[0]["sql"]).contains("O'Brien")
+	)
+
+	driver.clear()
+	driver.answers = {"SELECT stat, dim, amount, revision": [{"stat": "kills", "dim": "weapon:rifle", "amount": 5.0, "revision": 2}]}
+	var cell: DotResult = await store.merge(&"p2", {"kills": 1, "kills|weapon:rifle": 2}, schema)
+	var cell_updates := driver.matching("UPDATE dot_stats_values")
+	var cell_inserts := driver.matching("INSERT INTO dot_stats_values")
+	_check(
+		"a breakdown cell is its own row: updated by dim, the total inserted with dim empty",
+		cell.ok and cell_updates.size() == 1 and (cell_updates[0]["params"] as Array)[0] == 7.0
+			and (cell_updates[0]["params"] as Array).slice(3) == ["p2", "kills", "weapon:rifle", 2]
+			and cell_inserts.size() == 1 and (cell_inserts[0]["params"] as Array).slice(0, 4) == ["p2", "kills", "", 1.0],
+		cell
+	)
+	driver.answers = {"SELECT stat, dim, amount, revision": [
+		{"stat": "kills", "dim": "", "amount": 8.0, "revision": 1},
+		{"stat": "kills", "dim": "weapon:rifle", "amount": 5.0, "revision": 1},
+	]}
+	var read_back: DotResult = await store.values_for(&"p2")
+	_check(
+		"values_for returns the cell beside the total",
+		read_back.ok and (read_back.value as DotStatsValues).get_value(&"kills") == 8.0
+			and float((read_back.value as DotStatsValues).cells.get("kills|weapon:rifle", 0.0)) == 5.0
 	)
 
 	# An existing row: the rule runs HERE, and the value is written guarded by revision.
 	driver.clear()
-	driver.answers = {"SELECT stat, amount, revision": [
-		{"stat": "kills", "amount": 7.0, "revision": 4.0},
-		{"stat": "top_speed", "amount": "30.5", "revision": 1},
-		{"stat": "best_lap", "amount": 12.5, "revision": 2},
+	driver.answers = {"SELECT stat, dim, amount, revision": [
+		{"stat": "kills", "dim": "", "amount": 7.0, "revision": 4.0},
+		{"stat": "top_speed", "dim": "", "amount": "30.5", "revision": 1},
+		{"stat": "best_lap", "dim": "", "amount": 12.5, "revision": 2},
 	]}
 	await store.merge(&"p1", {"kills": 3, "top_speed": 20.0, "best_lap": 11.0}, schema, "")
 	var updates := driver.matching("UPDATE dot_stats_values")
@@ -755,7 +787,7 @@ func _test_sql_store() -> void:
 	_check(
 		"a counter's new total is computed by DotStatsDef.merge and bound: 7 + 3, at revision 4",
 		updates.size() == 2 and (updates[0]["params"] as Array)[0] == 10.0
-			and (updates[0]["params"] as Array).slice(3) == ["p1", "kills", 4]
+			and (updates[0]["params"] as Array).slice(3) == ["p1", "kills", "", 4]
 	)
 	_check(
 		"a lowest keeps the lower: 11 over 12.5",
@@ -763,7 +795,7 @@ func _test_sql_store() -> void:
 	)
 	_check(
 		"and the guard is in the statement",
-		updates.size() == 2 and str(updates[0]["sql"]).contains("WHERE player = ? AND stat = ? AND revision = ?")
+		updates.size() == 2 and str(updates[0]["sql"]).contains("WHERE player = ? AND stat = ? AND dim = ? AND revision = ?")
 			and str(updates[0]["sql"]).contains("revision = revision + 1")
 	)
 	var arithmetic := false
@@ -779,7 +811,7 @@ func _test_sql_store() -> void:
 	var raced: DotResult = await store.merge(&"p1", {"kills": 1}, schema)
 	_check(
 		"an update that lost a race is re-read and folded again, not written blind",
-		raced.ok and driver.matching("SELECT stat, amount, revision").size() == 3
+		raced.ok and driver.matching("SELECT stat, dim, amount, revision").size() == 3
 			and driver.matching("UPDATE dot_stats_values").size() == 2 and store.conflicts == 1,
 		raced
 	)
@@ -796,12 +828,12 @@ func _test_sql_store() -> void:
 
 	# An INSERT that fails while the row is still absent is a real failure, not a race.
 	driver.clear()
-	driver.answers = {"SELECT stat, amount, revision": []}
+	driver.answers = {"SELECT stat, dim, amount, revision": []}
 	driver.fail_inserts = 2
 	var refused: DotResult = await store.merge(&"p5", {"kills": 1, "level": 3}, schema)
 	_check(
 		"an insert that fails with no row behind it is a failure, with both stats unapplied",
-		not refused.ok and driver.matching("SELECT stat, amount, revision").size() == 2
+		not refused.ok and driver.matching("SELECT stat, dim, amount, revision").size() == 2
 			and (refused.error.context.get("unapplied", {}) as Dictionary).size() == 2,
 		refused
 	)
@@ -1146,6 +1178,87 @@ func _test_batch_ids() -> void:
 	_done()
 
 
+func _test_v2_submit() -> void:
+	_section("v2 submit shape, max_rate, breakdown cells in SQL")
+
+	var schema: DotStatsSchema = DotStatsSchema.from_dictionary({"stats": [
+		{"id": "kills", "kind": "COUNTER", "publish": true, "breakdowns": ["weapon"], "max_rate": 60},
+		{"id": "best", "kind": "BEST", "publish": true},
+	]}).value
+	var backbone := FakeBackbone.new()
+	var tracker := DotStatsTracker.new()
+	tracker.schema = schema
+	tracker.report_to_backbone = true
+	tracker.define_on_start = false
+	tracker.link_tmc_user = true
+	tracker.report_interval = 0.0
+	tracker.reporter.client = backbone
+	tracker.reporter.server_id = 12
+	var now := [0.0]
+	tracker.clock = func() -> float: return now[0]
+	add_child(tracker)
+	tracker.begin(&"human", "Ada", {"session_id": "s-1", "map": "dm_canyon", "tmc_user": "u1"})
+	tracker.begin(&"bot1", "Bot", {"session_id": "s-2", "is_bot": true, "tmc_user": "u2"})
+	tracker.record(&"human", &"kills", 3.0, {"weapon": &"rifle"})
+	tracker.record(&"bot1", &"kills", 1.0)
+	tracker.end(&"bot1")
+	await tracker.flush()
+
+	var call: Dictionary = backbone.calls[0]
+	var body: Dictionary = call["body"]
+	_check("it posts to stats/v2/submit", str(call["path"]) == "stats/v2/submit" and DotStatsReporter.SUBMIT_PATH == "stats/v2/submit")
+	_check("with v, batch and the server id", int(body["v"]) == 2 and str(body["batch"]) != "" and int(body["server"]) == 12)
+	var by_player := {}
+	for p in body["players"]:
+		by_player[p["player"]] = p
+	_check("a player row carries bot, name, session and stats", by_player.has("human") and by_player["human"]["bot"] == false and by_player["human"]["session"] == "s-1" and float(by_player["human"]["stats"]["kills"]) == 3.0)
+	_check("breakdown cells go in by", float(by_player["human"]["by"]["weapon"]["rifle"]["kills"]) == 3.0)
+	_check("a linked user is sent for a human", by_player["human"].get("user", "") == "u1")
+	_check("a bot is flagged and never carries a user", by_player["bot1"]["bot"] == true and not by_player["bot1"].has("user"))
+	var sessions := {}
+	for sess in body["sessions"]:
+		sessions[sess["session"]] = sess
+	_check("sessions list both, the closed one with left", sessions.size() == 2 and sessions["s-1"]["left"] == null and sessions["s-2"]["left"] != null and sessions["s-1"]["map"] == "dm_canyon" and sessions["s-2"]["bot"] == true)
+	_check("a session is sent once it is acknowledged", backbone.calls.size() == 1)
+	await tracker.flush()
+	_check("and not again", backbone.calls.size() == 1)
+
+	# Frozen batch under failure: sessions ride the same payload.
+	tracker.end(&"human")
+	backbone.fail = true
+	await tracker.flush()
+	backbone.fail = false
+	await tracker.flush()
+	_check("a resend keeps the session payload and id", backbone.calls.size() == 3 and backbone.calls[1]["body"] == backbone.calls[2]["body"] and backbone.calls[2]["body"]["sessions"][0]["left"] != null)
+
+	# max_rate: 60 per minute is one a second; the bucket starts full.
+	var limited: Array = []
+	tracker.refused.connect(func(_p, _s, why): limited.append(why))
+	tracker.begin(&"fast", "Fast")
+	var landed := 0
+	for i in 70:
+		if tracker.record(&"fast", &"kills").ok:
+			landed += 1
+	_check("max_rate refuses a counter growing too fast", landed == 60 and limited.size() == 10 and limited[0] == "over_rate")
+	now[0] = 10.0
+	_check("and allows it again as time passes", tracker.record(&"fast", &"kills", 10.0).ok and not tracker.record(&"fast", &"kills", 1.0).ok)
+	tracker.begin(&"slow", "Slow")
+	_check("each player has their own allowance", tracker.record(&"slow", &"kills", 60.0).ok)
+	tracker.queue_free()
+
+	# The SQL schema keys a breakdown cell by dim.
+	var spec := DotStatsSqlSchema.table_spec()
+	var names: Array = []
+	for c in spec["columns"]:
+		names.append(c["name"])
+	_check("the SQL table has a dim column in its key", "dim" in names and "dim" in spec["primary_key"] and DotSqlSchema.validate(spec).ok)
+	_check("and the migration upgrades a table without one", DotStatsSqlSchema.migration_steps().size() == 2)
+	var loaded := DotStatsValues.from_dictionary({"kills": 4, "kills|weapon:rifle": 3})
+	_check("a cell key loads into cells, not the totals", loaded.get_value(&"kills") == 4.0 and float(loaded.cells.get("kills|weapon:rifle", 0.0)) == 3.0 and not loaded.has(&"kills|weapon:rifle"))
+	_line("")
+	_done()
+
+
 func _test_client() -> void:
 	_section("client")
 
@@ -1153,6 +1266,10 @@ func _test_client() -> void:
 	var mine := DotStatsClient.new()
 	mine.name = "MyStats"
 	mine.schema = _make_schema()
+	for d in mine.schema.stats:
+		d.source = "client"
+	var server_stat := mine.schema.define(&"rank_points")
+	server_stat.publish = true
 	mine.report_interval = 0.0
 	mine.client = app
 	add_child(mine)
@@ -1170,6 +1287,8 @@ func _test_client() -> void:
 
 	var undeclared := mine.record(&"assists")
 	_check("an undeclared stat is refused", not undeclared.ok)
+	var forged := mine.record(&"rank_points", 99.0)
+	_check("a source=server stat is refused by the client", not forged.ok and forged.code() == DotError.CODE_FORBIDDEN and not mine.session_values().has(&"rank_points") and mine.pending() == 2)
 
 	var flushed := await mine.flush()
 	_check("a flush posts to stats/submit", flushed.ok and str(app.calls[0]["path"]) == DotStatsClient.SUBMIT_PATH, flushed)

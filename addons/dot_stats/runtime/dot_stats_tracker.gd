@@ -95,6 +95,9 @@ signal stored(result: DotResult)
 ## [method begin] whose meta has no `is_bot`. Bots never carry a linked-user claim.
 var bot_check: Callable = Callable()
 
+## Optional `func() -> float` returning seconds, for [member DotStatsDef.max_rate]; the engine clock when unset.
+var clock: Callable = Callable()
+
 var reporter := DotStatsReporter.new()
 
 ## Where lifetime totals are kept: a [DotStatsStore], or anything with the same
@@ -212,12 +215,15 @@ func begin(player_id: StringName, player_name: String = "", meta: Dictionary = {
 		"name": player_name,
 		"session": DotStatsValues.new(),
 		"delta": DotStatsValues.new(),
+		"rate": {},
 		"session_id": sid,
 		"joined": Time.get_unix_time_from_system(),
 		"server": str(meta.get("server", "")),
 		"map": str(meta.get("map", _context.get("map", ""))),
 		"tmc_user": str(meta.get("tmc_user", "")) if link_tmc_user and not bot else "",
 	}
+	if report_to_backbone:
+		reporter.note_session(_session_row(player_id, _players[player_id], 0.0), player_name)
 
 
 ## Stops counting for a player: their outstanding delta is queued and they are
@@ -228,7 +234,10 @@ func end(player_id: StringName) -> DotStatsValues:
 	var row: Dictionary = _players[player_id]
 	_checkpoint(player_id, row)
 	_players.erase(player_id)
-	session_ended.emit(_session_row(player_id, row, Time.get_unix_time_from_system()))
+	var closed := _session_row(player_id, row, Time.get_unix_time_from_system())
+	if report_to_backbone:
+		reporter.note_session(closed, str(row["name"]))
+	session_ended.emit(closed)
 	return row["session"]
 
 
@@ -337,6 +346,10 @@ func record(player_id: StringName, stat_id: StringName, value: float = 1.0, dims
 		refused.emit(player_id, stat_id, why)
 		return DotResult.fail(DotError.CODE_INVALID, "A reading does not fit its stat.", "%s: %s" % [stat_id, why])
 
+	if def.max_rate > 0.0 and not _within_rate(row, def, value):
+		refused.emit(player_id, stat_id, "over_rate")
+		return DotResult.fail(DotError.CODE_QUOTA, "A reading grows faster than max_rate allows.", String(stat_id))
+
 	var cell_dims := _cell_dims(def, dims)
 	var applied := session.record(def, value, cell_dims)
 	if not applied.ok:
@@ -368,6 +381,23 @@ func event(player_id: StringName, event_name: StringName, data: Dictionary = {})
 			landed += 1
 	event_seen.emit(player_id, event_name, data)
 	return landed
+
+
+## A token bucket per player and stat: max_rate per minute, full at the start, refilled by time.
+func _within_rate(row: Dictionary, def: DotStatsDef, value: float) -> bool:
+	if value <= 0.0:
+		return true
+	var now := float(clock.call()) if clock.is_valid() else Time.get_ticks_msec() / 1000.0
+	var buckets: Dictionary = row["rate"]
+	var b: Dictionary = buckets.get(def.id, {"tokens": def.max_rate, "t": now})
+	var tokens := minf(def.max_rate, float(b["tokens"]) + (now - float(b["t"])) * def.max_rate / 60.0)
+	if value > tokens:
+		b["tokens"] = tokens
+		b["t"] = now
+		buckets[def.id] = b
+		return false
+	buckets[def.id] = {"tokens": tokens - value, "t": now}
+	return true
 
 
 func _log_event(row: Dictionary, player_id: StringName, stat_id: StringName, value: float, dims: Dictionary) -> void:
@@ -462,7 +492,8 @@ func _checkpoint(player_id: StringName, row: Dictionary) -> void:
 		# switched reporting off, which is the default. Cleared so it cannot grow.
 		delta.clear()
 		return
-	var queued := reporter.queue(player_id, str(row["name"]), delta.to_dictionary())
+	var meta := {"session": row["session_id"], "bot": row["is_bot"], "user": row["tmc_user"], "map": row["map"]}
+	var queued := reporter.queue(player_id, str(row["name"]), delta.to_dictionary(), meta, delta.cells)
 	if not queued.ok:
 		DotLog.warn(
 			CHANNEL,

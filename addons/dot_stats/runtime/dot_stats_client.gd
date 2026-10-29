@@ -133,6 +133,11 @@ func record(stat_id: StringName, value: float = 1.0) -> DotResult:
 			DotError.CODE_INVALID, "No such stat is declared.", String(stat_id)
 		)
 
+	if def.source != "client":
+		return DotResult.fail(
+			DotError.CODE_FORBIDDEN, "Only a client-source stat can be reported by a player.", String(stat_id)
+		)
+
 	var applied := _session.record(def, value)
 	if not applied.ok:
 		return applied

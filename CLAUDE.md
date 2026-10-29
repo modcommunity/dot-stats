@@ -51,6 +51,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - v2 declarations add `type`, `min`/`max`, `max_rate`, up to two `breakdowns` (weapon, map; never crossed), a derived stat (ratio, difference, sum, per_minute over two stored stats, never stored), display hints and `source` (server or client; the site refuses client submissions for server stats). A v1 declaration loads unchanged.
 - Breakdown cells merge by the stat's own kind; `set_context` supplies axes a record omits, and `event()` runs `rules` (event to stat, `when`/`unless` tags, a value field or callback).
 - With `log_events`, `drain_events()` returns append-only rows `{session, player, is_bot, stat, dims, value, t}`; sessions are first-class (`session_info`, `session_ended`). Bots (`begin` meta `is_bot` or `bot_check`) never carry a linked-user claim; `tmc_user` is kept only with `link_tmc_user`.
+- The reporter posts `stats/v2/submit` (sessions, per-player `by` cells, frozen batch id resent unchanged). The tracker enforces `max_rate`; `DotStatsClient` refuses server-source stats; the SQL store has a `dim` column (key player, stat, dim). dot-game and dot-bot do not call the tracker yet, so they must pass `is_bot` in `begin` meta or set `bot_check`.
 - The reporter sends a batch id and resends an unacknowledged batch unchanged under the same id.
 
 Deliberately not here: app-wide totals across servers, server-level figures, anti-cheat, a tracker in dot-server. [design](docs/design.md#deliberately-not-here)
