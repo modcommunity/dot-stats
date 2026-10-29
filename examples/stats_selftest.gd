@@ -18,7 +18,7 @@ const CHECKS := 213
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 19
+const SECTIONS := 20
 
 var _passed := 0
 var _failed := 0
@@ -102,6 +102,7 @@ func _run() -> void:
 	_test_cells_and_events()
 	await _test_batch_ids()
 	await _test_v2_submit()
+	await _test_site_contract()
 
 	_line("")
 	_line("%d passed, %d failed" % [_passed, _failed])
@@ -1211,14 +1212,16 @@ func _test_v2_submit() -> void:
 	var by_player := {}
 	for p in body["players"]:
 		by_player[p["player"]] = p
-	_check("a player row carries bot, name, session and stats", by_player.has("human") and by_player["human"]["bot"] == false and by_player["human"]["session"] == "s-1" and float(by_player["human"]["stats"]["kills"]) == 3.0)
+	_check("a player row carries bot, name, session and stats", by_player.has("human") and by_player["human"]["bot"] == false and by_player["human"]["session"] == DotStatsReporter.wire_session_id("s-1") and float(by_player["human"]["stats"]["kills"]) == 3.0)
 	_check("breakdown cells go in by", float(by_player["human"]["by"]["weapon"]["rifle"]["kills"]) == 3.0)
 	_check("a linked user is sent for a human", by_player["human"].get("user", "") == "u1")
 	_check("a bot is flagged and never carries a user", by_player["bot1"]["bot"] == true and not by_player["bot1"].has("user"))
 	var sessions := {}
 	for sess in body["sessions"]:
-		sessions[sess["session"]] = sess
-	_check("sessions list both, the closed one with left", sessions.size() == 2 and sessions["s-1"]["left"] == null and sessions["s-2"]["left"] != null and sessions["s-1"]["map"] == "dm_canyon" and sessions["s-2"]["bot"] == true)
+		sessions[str(sess["session"])] = sess
+	var s1: Dictionary = sessions.get(DotStatsReporter.wire_session_id("s-1"), {})
+	var s2: Dictionary = sessions.get(DotStatsReporter.wire_session_id("s-2"), {})
+	_check("sessions list both, the closed one with left", sessions.size() == 2 and s1.get("left", 1) == null and s2.get("left") != null and s1.get("map") == "dm_canyon" and s2.get("bot") == true)
 	_check("a session is sent once it is acknowledged", backbone.calls.size() == 1)
 	await tracker.flush()
 	_check("and not again", backbone.calls.size() == 1)
@@ -1317,3 +1320,150 @@ func _test_client() -> void:
 	mine.queue_free()
 	_line("")
 	_done()
+
+
+## The payload the reporter really builds, checked field by field against the site's validator
+## (examples/fixtures/dot_submit_v2.schema.json mirrors its zod schema).
+func _test_site_contract() -> void:
+	_section("site contract: stats/v2/submit")
+	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://examples/fixtures/dot_submit_v2.schema.json"))
+	var schema: DotStatsSchema = DotStatsSchema.from_dictionary({"stats": [
+		{"id": "arena.kills", "kind": "COUNTER", "publish": true, "breakdowns": ["weapon", "map"]},
+		{"id": "arena.longest_kill", "kind": "BEST", "publish": true},
+	]}).value
+	var backbone := FakeBackbone.new()
+	var tracker := DotStatsTracker.new()
+	tracker.schema = schema
+	tracker.report_to_backbone = true
+	tracker.define_on_start = false
+	tracker.link_tmc_user = true
+	tracker.report_interval = 0.0
+	tracker.reporter.client = backbone
+	tracker.reporter.server_id = 12
+	add_child(tracker)
+	tracker.begin(&"k1", "Ada", {"session_id": "game-session-1", "map": "dm_canyon", "tmc_user": "u1"})
+	tracker.begin(&"bot_1", "Bot", {"is_bot": true, "tmc_user": "u2"})
+	tracker.record(&"k1", &"arena.kills", 3.0, {"weapon": &"zee.rifle", "map": &"dm_canyon"})
+	tracker.record(&"k1", &"arena.longest_kill", 41.2)
+	tracker.record(&"bot_1", &"arena.kills", 1.0)
+	tracker.end(&"bot_1")
+	backbone.fail = true
+	await tracker.flush()
+	backbone.fail = false
+	await tracker.flush()
+	var frozen: bool = backbone.calls.size() == 2 and backbone.calls[0]["body"] == backbone.calls[1]["body"]
+	_check("a frozen resend is byte-identical", frozen)
+	var errors := _validate_submit(backbone.calls[1]["body"], fx)
+	_check("the real payload satisfies the site's validator", errors.is_empty(), null)
+	if not errors.is_empty():
+		_line("  " + "; ".join(errors))
+	var body: Dictionary = backbone.calls[1]["body"]
+	var human: Dictionary = {}
+	var bot: Dictionary = {}
+	for p in body["players"]:
+		if p["player"] == "k1":
+			human = p
+		else:
+			bot = p
+	_check("the human carries user, the bot does not", human.get("user", "") == "u1" and bot["bot"] == true and not bot.has("user"))
+	_check("the cells are by axis, value, stat", float(human["by"]["weapon"]["zee.rifle"]["arena.kills"]) == 3.0 and float(human["by"]["map"]["dm_canyon"]["arena.kills"]) == 3.0)
+	_check("a non-UUID game session id maps to one stable UUID", human["session"] == DotStatsReporter.wire_session_id("game-session-1") and human["session"] != "game-session-1")
+
+	# The validator itself must refuse what the site refuses, or the check above proves nothing.
+	var bad := body.duplicate(true)
+	bad["batch"] = "123-456-1"
+	_check("the mirror refuses a non-UUID batch", not _validate_submit(bad, fx).is_empty())
+	bad = body.duplicate(true)
+	bad["players"][0]["stats"]["bad key"] = 1.0
+	_check("the mirror refuses a stat key with a space", not _validate_submit(bad, fx).is_empty())
+	bad = body.duplicate(true)
+	bad["sessions"][0]["joined"] = 1.5
+	_check("the mirror refuses a fractional joined", not _validate_submit(bad, fx).is_empty())
+	tracker.queue_free()
+	_line("")
+	_done()
+
+
+func _validate_submit(body: Dictionary, fx: Dictionary) -> Array:
+	var e: Array = []
+	var key := RegEx.create_from_string(fx["key"])
+	var pkey := RegEx.create_from_string(fx["player_key"])
+	var uuid := RegEx.create_from_string(fx["uuid"])
+	var lim: Dictionary = fx["limits"]
+	_allowed(body, fx["top"], "body", e)
+	if not (body.get("v") is int or body.get("v") is float) or int(body.get("v", 0)) != 2:
+		e.append("v must be 2")
+	if body.has("batch") and (not body["batch"] is String or uuid.search(body["batch"]) == null):
+		e.append("batch is not a uuid: %s" % body["batch"])
+	if body.has("server") and not _is_int(body["server"], 1):
+		e.append("server must be a positive integer")
+	var sessions: Array = body.get("sessions", [])
+	if sessions.size() > int(lim["sessions"]):
+		e.append("too many sessions")
+	for s in sessions:
+		_allowed(s, fx["session"], "session", e)
+		if uuid.search(str(s.get("session", ""))) == null:
+			e.append("session id is not a uuid")
+		if pkey.search(str(s.get("player", ""))) == null:
+			e.append("session player key")
+		if not _is_int(s.get("joined"), 0):
+			e.append("joined must be a non-negative integer")
+		if s.get("left") != null and s.has("left") and not _is_int(s["left"], 0):
+			e.append("left must be a non-negative integer or null")
+		if s.has("bot") and not s["bot"] is bool:
+			e.append("session bot must be bool")
+		if str(s.get("name", "")).length() > int(fx["session"]["name_max"]) or str(s.get("map", "")).length() > int(fx["session"]["map_max"]):
+			e.append("session name/map too long")
+	var players: Array = body.get("players", [])
+	if players.size() > int(lim["players"]):
+		e.append("too many players")
+	var cells := 0
+	for p in players:
+		_allowed(p, fx["player"], "player", e)
+		if pkey.search(str(p.get("player", ""))) == null:
+			e.append("player key")
+		if p.has("bot") and not p["bot"] is bool:
+			e.append("player bot must be bool")
+		if p.has("session") and uuid.search(str(p["session"])) == null:
+			e.append("player session is not a uuid")
+		if str(p.get("name", "")).length() > int(fx["player"]["name_max"]) or str(p.get("user", "")).length() > int(fx["player"]["user_max"]):
+			e.append("player name/user too long")
+		cells += _check_cells(p.get("stats", {}), key, lim, e)
+		for axis in p.get("by", {}):
+			if key.search(str(axis)) == null:
+				e.append("axis key")
+			for value in p["by"][axis]:
+				if key.search(str(value)) == null:
+					e.append("axis value key")
+				cells += _check_cells(p["by"][axis][value], key, lim, e)
+	if cells > int(lim["cells"]):
+		e.append("too many cells")
+	return e
+
+
+func _check_cells(cells: Variant, key: RegEx, lim: Dictionary, e: Array) -> int:
+	if not cells is Dictionary:
+		e.append("cells must be an object")
+		return 0
+	for k in cells:
+		if key.search(str(k)) == null:
+			e.append("stat key: %s" % k)
+		if not (cells[k] is float or cells[k] is int) or is_nan(float(cells[k])) or is_inf(float(cells[k])) or absf(float(cells[k])) > float(lim["value"]):
+			e.append("stat value: %s" % k)
+	return cells.size()
+
+
+func _allowed(obj: Variant, spec: Dictionary, what: String, e: Array) -> void:
+	if not obj is Dictionary:
+		e.append("%s must be an object" % what)
+		return
+	for r in spec["required"]:
+		if not obj.has(r):
+			e.append("%s lacks %s" % [what, r])
+	for k in obj:
+		if not (k in spec["required"] or k in spec["optional"]):
+			e.append("%s has unknown key %s" % [what, k])
+
+
+func _is_int(v: Variant, minimum: int) -> bool:
+	return (v is int and v >= minimum) or (v is float and v == floorf(v) and v >= minimum)

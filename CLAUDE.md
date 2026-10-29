@@ -52,6 +52,6 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - Breakdown cells merge by the stat's own kind; `set_context` supplies axes a record omits, and `event()` runs `rules` (event to stat, `when`/`unless` tags, a value field or callback).
 - With `log_events`, `drain_events()` returns append-only rows `{session, player, is_bot, stat, dims, value, t}`; sessions are first-class (`session_info`, `session_ended`). Bots (`begin` meta `is_bot` or `bot_check`) never carry a linked-user claim; `tmc_user` is kept only with `link_tmc_user`.
 - The reporter posts `stats/v2/submit` (sessions, per-player `by` cells, frozen batch id resent unchanged). The tracker enforces `max_rate`; `DotStatsClient` refuses server-source stats; the SQL store has a `dim` column (key player, stat, dim). dot-game and dot-bot do not call the tracker yet, so they must pass `is_bot` in `begin` meta or set `bot_check`.
-- The reporter sends a batch id and resends an unacknowledged batch unchanged under the same id.
+- The reporter sends a UUID batch id and resends an unacknowledged batch unchanged under it. Session ids go out as UUIDs (`DotStatsReporter.wire_session_id`: a UUID passes, anything else maps to a stable one). `examples/fixtures/dot_submit_v2.schema.json` mirrors the site validator and the selftest checks the real payload against it; refresh it when `dotstats/payload.ts` changes.
 
 Deliberately not here: app-wide totals across servers, server-level figures, anti-cheat, a tracker in dot-server. [design](docs/design.md#deliberately-not-here)

@@ -185,6 +185,27 @@ var _inflight: Dictionary = {}
 var _batch_seq: int = 0
 
 
+## A random v4 UUID, the form the site's batch id requires.
+static func new_uuid() -> String:
+	var b := Crypto.new().generate_random_bytes(16)
+	return _uuid_from(b)
+
+
+## The id as the site wants it: a UUID passes, anything else maps to a stable one, so a game's own id keeps naming one session.
+static func wire_session_id(id: String) -> String:
+	var shape := RegEx.create_from_string("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
+	if shape.search(id) != null:
+		return id
+	return _uuid_from(id.md5_buffer())
+
+
+static func _uuid_from(b: PackedByteArray) -> String:
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	var h := b.hex_encode()
+	return "%s-%s-%s-%s-%s" % [h.substr(0, 8), h.substr(8, 4), h.substr(12, 4), h.substr(16, 4), h.substr(20, 12)]
+
+
 func queued() -> int:
 	return _queue.size() + int(_inflight.get("players", []).size())
 
@@ -195,10 +216,11 @@ func note_session(row: Dictionary, player_name: String = "") -> void:
 	if sid == "":
 		return
 	var wire := {
-		"session": sid, "player": str(row.get("player", "")), "bot": bool(row.get("is_bot", false)),
-		"name": player_name.substr(0, 64), "map": str(row.get("map", "")),
+		"session": wire_session_id(sid), "player": str(row.get("player", "")), "bot": bool(row.get("is_bot", false)),
+		"name": player_name.substr(0, 64), "map": str(row.get("map", "")).substr(0, 64),
 		"joined": int(row.get("joined", 0)), "left": int(row["left"]) if row.has("left") else null,
 	}
+	sid = wire["session"]
 	_sessions.erase(sid)
 	_sessions[sid] = wire
 	while _sessions.size() > player_limit * 10:
@@ -232,9 +254,9 @@ func flush() -> DotResult:
 				"stats": vals.to_dictionary(),
 			}
 			if row["session"] != "":
-				entry["session"] = row["session"]
+				entry["session"] = wire_session_id(row["session"])
 			if row["user"] != "" and not row["bot"]:
-				entry["user"] = row["user"]
+				entry["user"] = str(row["user"]).substr(0, 64)
 			if not vals.cells.is_empty():
 				entry["by"] = vals.to_by()
 			players.append(entry)
@@ -244,7 +266,7 @@ func flush() -> DotResult:
 			frozen.append(_sessions[sid].duplicate())
 		_batch_seq += 1
 		_inflight = {
-			"batch": "%d-%d-%d" % [Time.get_unix_time_from_system(), randi(), _batch_seq],
+			"batch": new_uuid(),
 			"players": players, "sessions": frozen,
 		}
 	var count: int = _inflight["players"].size()

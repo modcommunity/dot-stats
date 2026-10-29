@@ -1,0 +1,18 @@
+{
+	"_source": "website-city src/lib/dotstats/payload.ts (DotSubmitInput, zod), read 2026-10-29 on dev01; update when the site changes",
+	"limits": {"players": 50, "cells": 1000, "sessions": 200, "value": 1e12},
+	"key": "^[A-Za-z0-9._:-]{1,64}$",
+	"player_key": "^[A-Za-z0-9._:-]{1,96}$",
+	"uuid": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+	"top": {"required": ["v", "players"], "optional": ["batch", "server", "sessions"]},
+	"session": {
+		"required": ["session", "player", "joined"],
+		"optional": ["bot", "name", "map", "left"],
+		"name_max": 64, "map_max": 64
+	},
+	"player": {
+		"required": ["player"],
+		"optional": ["bot", "name", "session", "user", "stats", "by"],
+		"name_max": 64, "user_max": 64
+	}
+}
