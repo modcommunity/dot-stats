@@ -26,6 +26,10 @@ const DEFAULT_TABLE := "dot_stats_values"
 ## by editing one.
 const MIGRATION_COMPONENT := "dot_stats"
 
+## The ranking index's name suffix; the legacy one came from the temporary step-two table.
+const INDEX_RANK := "stat_dim_amount_idx"
+const INDEX_RANK_LEGACY := "top_dim_idx"
+
 const COLUMNS := ["player", "stat", "dim", "amount", "player_name", "revision", "updated_at"]
 
 
@@ -39,11 +43,18 @@ const COLUMNS := ["player", "stat", "dim", "amount", "player_name", "revision", 
 ## - [b]`player_name` is on every row[/b], denormalised, so a ranking renders without a
 ##   join to a table this addon does not have. It is the name the player last had.
 static func table_spec(table: String = DEFAULT_TABLE) -> Dictionary:
+	var spec := _spec_v2(table)
+	spec["indexes"] = [{"name": INDEX_RANK, "columns": ["stat", "dim", "amount"]}]
+	return spec
+
+
+## The step-two table with the index name it was first created under (see migration step 3).
+static func _spec_v2(table: String) -> Dictionary:
 	var spec := _spec_v1(table)
 	var columns: Array = spec["columns"]
 	columns.insert(2, {"name": "dim", "type": "key", "null": false, "default": ""})
 	spec["primary_key"] = ["player", "stat", "dim"]
-	spec["indexes"] = [{"name": "top_dim_idx", "columns": ["stat", "dim", "amount"]}]
+	spec["indexes"] = [{"name": INDEX_RANK_LEGACY, "columns": ["stat", "dim", "amount"]}]
 	return spec
 
 
@@ -71,6 +82,7 @@ static func migration_steps(table: String = DEFAULT_TABLE) -> Array:
 	return [
 		[_spec_v1(table)],
 		[_upgrade_dim.bind(table)],
+		[_rename_rank_index.bind(table)],
 	]
 
 
@@ -78,7 +90,7 @@ static func migration_steps(table: String = DEFAULT_TABLE) -> Array:
 ## portably, so the rows are copied into a new table that replaces the old one.
 static func _upgrade_dim(driver: Object, table: String) -> DotResult:
 	var fresh := table + "_dim"
-	var made: DotResult = await driver.ensure_table(table_spec(fresh))
+	var made: DotResult = await driver.ensure_table(_spec_v2(fresh))
 	if not made.ok:
 		return made
 	for sql in [
@@ -91,6 +103,30 @@ static func _upgrade_dim(driver: Object, table: String) -> DotResult:
 		if not step.ok:
 			return step
 	return DotResult.success(true)
+
+
+## Step three: the ranking index carried the temporary table's name (`<table>_dim_top_dim_idx`).
+## Create the new one, then drop the old; both orders are safe to re-run.
+static func _rename_rank_index(driver: Object, table: String) -> DotResult:
+	var mysql: bool = driver.dialect() == DotSqlDialect.Kind.MYSQL
+	var old_name := "%s_%s" % [table + "_dim", INDEX_RANK_LEGACY]
+	for sql in rank_index_statements(table, old_name, mysql):
+		var step: DotResult = await driver.execute(sql)
+		if not step.ok:
+			return step
+	return DotResult.success(true)
+
+
+## MySQL has no IF [NOT] EXISTS on indexes; the migrator runs a step once, so plain DDL there.
+static func rank_index_statements(table: String, old_name: String, mysql: bool) -> Array:
+	var cols := "(stat, dim, amount)"
+	var new_name := "%s_%s" % [table, INDEX_RANK]
+	if mysql:
+		return ["CREATE INDEX %s ON %s %s" % [new_name, table, cols], "DROP INDEX %s ON %s" % [old_name, table]]
+	return [
+		"CREATE INDEX IF NOT EXISTS %s ON %s %s" % [new_name, table, cols],
+		"DROP INDEX IF EXISTS %s" % old_name,
+	]
 
 
 static func select_player(table: String) -> String:

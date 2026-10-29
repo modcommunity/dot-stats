@@ -12,7 +12,7 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 213
+const CHECKS := 223
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -725,8 +725,15 @@ func _test_sql_store() -> void:
 		"the table, its ranking index and its schema version",
 		driver.matching("CREATE TABLE IF NOT EXISTS dot_stats_values (").size() == 1
 			and driver.matching("CREATE INDEX IF NOT EXISTS dot_stats_values_top_idx").size() == 1
-			and driver.matching("INSERT INTO dot_sql_migrations").size() == 2
+			and driver.matching("INSERT INTO dot_sql_migrations").size() == 3
 	)
+	_check(
+		"the ranking index is renamed: new created, legacy dropped",
+		driver.matching("CREATE INDEX IF NOT EXISTS dot_stats_values_stat_dim_amount_idx ON dot_stats_values").size() == 1
+			and driver.matching("DROP INDEX IF EXISTS dot_stats_values_dim_top_dim_idx").size() == 1
+	)
+	var my := DotStatsSqlSchema.rank_index_statements("t", "t_dim_top_dim_idx", true)
+	_check("MySQL drops an index with ON <table>", my[1] == "DROP INDEX t_dim_top_dim_idx ON t")
 
 	_check(
 		"the dim upgrade copies rows into a keyed-by-dim table and swaps it in",
@@ -1255,7 +1262,7 @@ func _test_v2_submit() -> void:
 	for c in spec["columns"]:
 		names.append(c["name"])
 	_check("the SQL table has a dim column in its key", "dim" in names and "dim" in spec["primary_key"] and DotSqlSchema.validate(spec).ok)
-	_check("and the migration upgrades a table without one", DotStatsSqlSchema.migration_steps().size() == 2)
+	_check("and the migration upgrades a table without one", DotStatsSqlSchema.migration_steps().size() == 3)
 	var loaded := DotStatsValues.from_dictionary({"kills": 4, "kills|weapon:rifle": 3})
 	_check("a cell key loads into cells, not the totals", loaded.get_value(&"kills") == 4.0 and float(loaded.cells.get("kills|weapon:rifle", 0.0)) == 3.0 and not loaded.has(&"kills|weapon:rifle"))
 	_line("")
