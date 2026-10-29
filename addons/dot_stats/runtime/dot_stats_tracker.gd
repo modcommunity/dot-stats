@@ -44,8 +44,14 @@ const CHANNEL := "stats"
 ## Emitted when a reading is recorded. [param value] is the session value after it.
 signal recorded(player_id: StringName, stat_id: StringName, value: float)
 
+## Emitted when a player's session closes, with its row (id, player, server, map, joined, left, duration).
+signal session_ended(session: Dictionary)
+
 ## Emitted when a reading is refused: an undeclared stat, a non-finite number.
 signal refused(player_id: StringName, stat_id: StringName, reason: String)
+
+## Emitted by [method event] after its rules ran, so medals or achievements can share the stream.
+signal event_seen(player_id: StringName, event_name: StringName, data: Dictionary)
 
 ## Emitted after each flush, successful or not.
 signal reported(result: DotResult)
@@ -74,6 +80,21 @@ signal stored(result: DotResult)
 ## Declare the schema to the backbone when reporting starts.
 @export var define_on_start: bool = true
 
+@export_group("Event log")
+
+## Keep an append-only row per accepted reading, for [method drain_events].
+@export var log_events: bool = false
+
+## Oldest rows are dropped past this, so a consumer that never drains cannot grow memory.
+@export_range(100, 1000000, 100) var max_events: int = 50000
+
+## Put the linked TMC user id on sessions that were begun with one. Off, sessions stay opaque.
+@export var link_tmc_user: bool = false
+
+## Optional [code]func(player_id: StringName) -> bool[/code] saying a player is a bot, for a
+## [method begin] whose meta has no `is_bot`. Bots never carry a linked-user claim.
+var bot_check: Callable = Callable()
+
 var reporter := DotStatsReporter.new()
 
 ## Where lifetime totals are kept: a [DotStatsStore], or anything with the same
@@ -90,6 +111,11 @@ var _players: Dictionary = {}
 var _timer: Timer = null
 var _started: bool = false
 var _defined: bool = false
+var _events: Array[Dictionary] = []
+var _session_seq: int = 0
+
+## axis -> value: breakdown values applied to every record that does not name its own.
+var _context: Dictionary = {}
 
 ## player id -> {"name": String, "values": DotStatsValues}: deltas checkpointed for the store
 ## and not yet written to it. The store's half of what the reporter's queue is.
@@ -169,15 +195,28 @@ func _exit_tree() -> void:
 
 # --- Players ----------------------------------------------------------------
 
-## Starts counting for a player. Idempotent; a second call updates the name.
-func begin(player_id: StringName, player_name: String = "") -> void:
+## Starts counting for a player and opens their session. Idempotent; a second call updates the name.
+##
+## [param meta] may carry `session_id`, `server`, `map` and `tmc_user` (kept only with [member link_tmc_user]).
+func begin(player_id: StringName, player_name: String = "", meta: Dictionary = {}) -> void:
 	if _players.has(player_id):
 		(_players[player_id] as Dictionary)["name"] = player_name
 		return
+	_session_seq += 1
+	var sid := str(meta.get("session_id", ""))
+	if sid == "":
+		sid = "%d-%d-%d" % [int(Time.get_unix_time_from_system()), randi() % 1000000, _session_seq]
+	var bot := bool(meta["is_bot"]) if meta.has("is_bot") else (bot_check.is_valid() and bool(bot_check.call(player_id)))
 	_players[player_id] = {
+		"is_bot": bot,
 		"name": player_name,
 		"session": DotStatsValues.new(),
 		"delta": DotStatsValues.new(),
+		"session_id": sid,
+		"joined": Time.get_unix_time_from_system(),
+		"server": str(meta.get("server", "")),
+		"map": str(meta.get("map", _context.get("map", ""))),
+		"tmc_user": str(meta.get("tmc_user", "")) if link_tmc_user and not bot else "",
 	}
 
 
@@ -189,7 +228,38 @@ func end(player_id: StringName) -> DotStatsValues:
 	var row: Dictionary = _players[player_id]
 	_checkpoint(player_id, row)
 	_players.erase(player_id)
+	session_ended.emit(_session_row(player_id, row, Time.get_unix_time_from_system()))
 	return row["session"]
+
+
+## The player's open session as a row: id, player key, server, map, join and (when open) no leave.
+func session_info(player_id: StringName) -> Dictionary:
+	if not _players.has(player_id):
+		return {}
+	return _session_row(player_id, _players[player_id], 0.0)
+
+
+func _session_row(player_id: StringName, row: Dictionary, left: float) -> Dictionary:
+	var out := {
+		"session": row["session_id"], "player": String(player_id), "server": row["server"],
+		"map": row["map"], "joined": row["joined"], "is_bot": row["is_bot"],
+	}
+	if left > 0.0:
+		out["left"] = left
+		out["duration"] = left - float(row["joined"])
+	if row["tmc_user"] != "":
+		out["tmc_user"] = row["tmc_user"]
+	return out
+
+
+## Returns the logged event rows and empties the log.
+##
+## Each row is `{session, player, is_bot, stat, dims, value, t}`: the append-only shape a column store
+## takes as it is; tables, totals and timeframes are queries over it.
+func drain_events() -> Array[Dictionary]:
+	var out := _events
+	_events = []
+	return out
 
 
 func has_player(player_id: StringName) -> bool:
@@ -212,12 +282,30 @@ func session_values(player_id: StringName) -> DotStatsValues:
 
 # --- Recording --------------------------------------------------------------
 
+## Sets tracker-wide breakdown values, e.g. `{map = &"dm_canyon"}` on map load.
+##
+## Merged over what was set before; an empty value clears that axis.
+func set_context(dims: Dictionary) -> void:
+	for axis in dims:
+		if str(dims[axis]) == "":
+			_context.erase(str(axis))
+		else:
+			_context[str(axis)] = str(dims[axis])
+
+
+func context() -> Dictionary:
+	return _context.duplicate()
+
+
 ## Applies a reading to a player's session and delta, by the stat's kind.
 ##
 ## [param value] defaults to one, which is what a counter usually wants. A
 ## player not begun is begun with no name, so a game that only ever calls this
 ## still works; naming them is what [method begin] is for.
-func record(player_id: StringName, stat_id: StringName, value: float = 1.0) -> DotResult:
+##
+## [param dims] names breakdown values (`{weapon = &"rifle"}`); axes the stat does not break
+## down by are ignored and missing ones come from [method set_context].
+func record(player_id: StringName, stat_id: StringName, value: float = 1.0, dims: Dictionary = {}) -> DotResult:
 	if not _started:
 		var s := start()
 		if not s.ok:
@@ -229,6 +317,11 @@ func record(player_id: StringName, stat_id: StringName, value: float = 1.0) -> D
 		return DotResult.fail(
 			DotError.CODE_INVALID, "No such stat is declared.", String(stat_id)
 		)
+	if def.derived != null:
+		refused.emit(player_id, stat_id, "derived")
+		return DotResult.fail(
+			DotError.CODE_INVALID, "A derived stat is computed, not recorded.", String(stat_id)
+		)
 
 	if not _players.has(player_id):
 		begin(player_id)
@@ -237,14 +330,76 @@ func record(player_id: StringName, stat_id: StringName, value: float = 1.0) -> D
 	var session: DotStatsValues = row["session"]
 	var delta: DotStatsValues = row["delta"]
 
-	var applied := session.record(def, value)
+	var why := ""
+	if is_finite(value):
+		why = def.misfit(session.get_value(stat_id), value, session.has(stat_id))
+	if why != "":
+		refused.emit(player_id, stat_id, why)
+		return DotResult.fail(DotError.CODE_INVALID, "A reading does not fit its stat.", "%s: %s" % [stat_id, why])
+
+	var cell_dims := _cell_dims(def, dims)
+	var applied := session.record(def, value, cell_dims)
 	if not applied.ok:
 		refused.emit(player_id, stat_id, applied.code())
 		return applied
-	delta.record(def, value)
+	delta.record(def, value, cell_dims)
 
+	if log_events:
+		_log_event(row, player_id, stat_id, value, dims)
 	recorded.emit(player_id, stat_id, float(applied.value))
 	return applied
+
+
+## Runs every rule listening for [param event_name] over [param data] and returns how many readings landed.
+##
+## [param data] may carry `tags` (a PackedStringArray), numeric fields a rule's value names, and
+## breakdown values (`weapon`).
+func event(player_id: StringName, event_name: StringName, data: Dictionary = {}) -> int:
+	if not _started and not start().ok:
+		return 0
+	var landed := 0
+	for rule in schema.rules:
+		if rule.on != event_name:
+			continue
+		var reading := rule.reading(player_id, data)
+		if is_nan(reading):
+			continue
+		if record(player_id, rule.stat, reading, data).ok:
+			landed += 1
+	event_seen.emit(player_id, event_name, data)
+	return landed
+
+
+func _log_event(row: Dictionary, player_id: StringName, stat_id: StringName, value: float, dims: Dictionary) -> void:
+	var all := _context.duplicate()
+	for k in dims:
+		if typeof(dims[k]) in [TYPE_STRING, TYPE_STRING_NAME]:
+			all[str(k)] = str(dims[k])
+	var clean := {}
+	for k in all:
+		var v := str(all[k])
+		if v != "" and DotStatsDef.is_valid_id(str(k)) and DotStatsDef.is_valid_id(v):
+			clean[str(k)] = v
+	_events.append({
+		"session": row["session_id"], "player": String(player_id), "stat": String(stat_id),
+		"dims": clean, "is_bot": row["is_bot"], "value": value, "t": Time.get_unix_time_from_system(),
+	})
+	if _events.size() > max_events:
+		_events = _events.slice(_events.size() - max_events)
+
+
+## The cells a reading also lands in: one per breakdown axis that has a usable value.
+func _cell_dims(def: DotStatsDef, dims: Dictionary) -> Dictionary:
+	var out := {}
+	for axis in def.breakdowns:
+		var v := str(dims.get(axis, dims.get(StringName(axis), _context.get(axis, ""))))
+		if v == "":
+			continue
+		if not DotStatsDef.is_valid_id(v):
+			DotLog.debug(CHANNEL, "breakdown value skipped", {"axis": axis, "value": v.substr(0, 24)})
+			continue
+		out[axis] = v
+	return out
 
 
 # --- Reporting --------------------------------------------------------------
@@ -410,6 +565,8 @@ func describe() -> Dictionary:
 		"players": _players.size(),
 		"schema": schema.describe() if schema != null else null,
 		"reporting": report_to_backbone,
+		"context": _context,
+		"event_log": _events.size() if log_events else -1,
 		"interval": report_interval,
 		"defined": _defined,
 		"reporter": reporter.describe(),

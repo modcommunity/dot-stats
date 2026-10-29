@@ -12,13 +12,13 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 138
+const CHECKS := 193
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 15
+const SECTIONS := 18
 
 var _passed := 0
 var _failed := 0
@@ -98,6 +98,9 @@ func _run() -> void:
 	await _test_memory_store()
 	await _test_tracker_store()
 	await _test_sql_store()
+	_test_v2_declarations()
+	_test_cells_and_events()
+	await _test_batch_ids()
 
 	_line("")
 	_line("%d passed, %d failed" % [_passed, _failed])
@@ -283,6 +286,7 @@ func _test_tracker() -> void:
 	_check("describe() answers", tracker.describe().has("players"))
 
 	tracker.queue_free()
+
 	_line("")
 	_done()
 
@@ -943,6 +947,204 @@ func _test_reporter_reads() -> void:
 
 
 # --- The player's own client ------------------------------------------------
+
+func _v2_json() -> Dictionary:
+	return {
+		"version": 2,
+		"stats": [
+			{"id": "g.kills", "kind": "COUNTER", "type": "INT", "breakdowns": ["weapon", "map"], "publish": true,
+			 "column": "default", "category": "combat", "order": 10, "max_rate": 120, "source": "server"},
+			{"id": "g.shots", "kind": "COUNTER", "type": "INT", "breakdowns": ["weapon"], "publish": true},
+			{"id": "g.longest", "kind": "BEST", "type": "NUMBER", "min": 0, "max": 500, "unit": "m", "format": "distance",
+			 "breakdowns": ["weapon"], "better": "higher"},
+			{"id": "g.played", "kind": "COUNTER", "type": "DURATION", "breakdowns": ["weapon"]},
+			{"id": "g.accuracy", "derived": {"op": "ratio", "num": "g.kills", "den": "g.shots", "scale": 100},
+			 "format": "percent", "decimals": 1, "breakdowns": ["weapon"]},
+		],
+		"rules": [
+			{"on": "kill", "stat": "g.kills"},
+			{"on": "kill", "stat": "g.longest", "value": "distance"},
+			{"on": "shot", "stat": "g.shots", "when": ["hit"], "unless": ["practice"]},
+		],
+	}
+
+
+func _v2_refused(patch: Callable) -> bool:
+	var data := _v2_json()
+	patch.call(data["stats"])
+	return not DotStatsSchema.from_dictionary(data).ok
+
+
+func _test_v2_declarations() -> void:
+	_section("v2 declarations")
+
+	var parsed := DotStatsSchema.from_dictionary(_v2_json())
+	_check("a v2 schema loads", parsed.ok, parsed)
+	if not parsed.ok:
+		return
+	var schema: DotStatsSchema = parsed.value
+	var kills := schema.find(&"g.kills")
+	_check("fields are read", kills.value_type == DotStatsDef.ValueType.INT and kills.breakdowns == PackedStringArray(["weapon", "map"]) and kills.max_rate == 120.0 and kills.column == "default" and kills.order == 10)
+	var longest := schema.find(&"g.longest")
+	_check("bounds are read", longest.has_min and longest.has_max and longest.max_value == 500.0 and longest.format == "distance")
+	_check("a derived stat is read", schema.find(&"g.accuracy").derived != null and schema.find(&"g.accuracy").derived.scale == 100.0)
+	_check("rules are read", schema.rules.size() == 3 and schema.rules[2].when == PackedStringArray(["hit"]) and schema.rules[1].value_field == "distance")
+
+	var again := DotStatsSchema.from_dictionary(schema.to_dictionary())
+	_check("it round trips", again.ok and JSON.stringify(again.value.to_dictionary()) == JSON.stringify(schema.to_dictionary()), again)
+
+	var v1 := DotStatsSchema.from_dictionary({"stats": [{"id": "kills", "kind": "COUNTER", "publish": true}]})
+	_check("a v1 declaration still loads with v1 defaults", v1.ok and v1.value.find(&"kills").source == "server" and v1.value.find(&"kills").breakdowns.is_empty() and not v1.value.find(&"kills").has_max)
+
+	var wire := DotStatsReporter.wire_definition(longest)
+	_check("define sends type, min and max", wire["type"] == "NUMBER" and wire["min"] == 0.0 and wire["max"] == 500.0 and wire["key"] == "g.longest")
+	var wire_kills := DotStatsReporter.wire_definition(kills)
+	_check("and the v2 fields", wire_kills["maxRate"] == 120.0 and wire_kills["breakdowns"] == ["weapon", "map"] and wire_kills["column"] == "default" and not wire_kills.has("publish"))
+	_check("an unbounded stat sends no bound", not DotStatsReporter.wire_definition(schema.find(&"g.shots")).has("min"))
+
+	_check("three breakdowns are refused", _v2_refused(func(l): l[0]["breakdowns"] = ["weapon", "map", "class"]))
+	_check("min above max is refused", _v2_refused(func(l): l[2]["min"] = 900))
+	_check("an unknown type is refused", _v2_refused(func(l): l[0]["type"] = "TEXT"))
+	_check("an unknown column is refused", _v2_refused(func(l): l[0]["column"] = "loud"))
+	_check("a derived stat with a kind is refused", _v2_refused(func(l): l[4]["kind"] = "GAUGE"))
+	_check("a derived stat with bounds is refused", _v2_refused(func(l): l[4]["max"] = 100))
+	_check("a derived input that is not declared is refused", _v2_refused(func(l): l[4]["derived"]["den"] = "g.nope"))
+	_check("a derived breakdown its inputs lack is refused", _v2_refused(func(l): l[4]["breakdowns"] = ["map"]))
+	_check("max_rate on a best is refused", _v2_refused(func(l): l[2]["max_rate"] = 5))
+	_check("a rule on an undeclared stat is refused", not DotStatsSchema.from_dictionary({"stats": [], "rules": [{"on": "kill", "stat": "x"}]}).ok)
+	_check("a newer version is refused", not DotStatsSchema.from_dictionary({"version": 3, "stats": []}).ok)
+
+	var values := DotStatsValues.new()
+	var acc: DotStatsDerived = schema.find(&"g.accuracy").derived
+	values.record(kills, 3.0, {"weapon": "rifle"})
+	_check("a derived stat with no divisor is NAN", is_nan(acc.compute(values)))
+	values.record(schema.find(&"g.shots"), 4.0, {"weapon": "rifle"})
+	_check("a ratio scales", is_equal_approx(acc.compute(values), 75.0) and is_equal_approx(acc.compute(values, "weapon:rifle"), 75.0))
+
+	_line("")
+	_done()
+
+
+func _test_cells_and_events() -> void:
+	_section("cells and events")
+
+	var schema: DotStatsSchema = DotStatsSchema.from_dictionary(_v2_json()).value
+	var tracker := DotStatsTracker.new()
+	tracker.schema = schema
+	tracker.name = "CellTracker"
+	add_child(tracker)
+	var seen: Array = []
+	tracker.event_seen.connect(func(_p, e, _d): seen.append(str(e)))
+	var refusals: Array = []
+	tracker.refused.connect(func(_p, _s, why): refusals.append(why))
+	var p := &"p1"
+
+	tracker.set_context({"map": &"dm_canyon"})
+	tracker.record(p, &"g.kills", 1.0, {"weapon": &"rifle"})
+	tracker.record(p, &"g.kills", 2.0, {"weapon": &"pistol"})
+	var s := tracker.session_values(p)
+	_check("a record lands in the total", s.get_value(&"g.kills") == 3.0)
+	_check("and in each weapon cell", s.get_cell(&"g.kills", "weapon:rifle") == 1.0 and s.get_cell(&"g.kills", "weapon:pistol") == 2.0)
+	_check("and the context fills the missing map axis", s.get_cell(&"g.kills", "map:dm_canyon") == 3.0)
+	tracker.record(p, &"g.kills", 1.0, {"class": &"medic", "weapon": &"rifle"})
+	_check("an axis the stat lacks is ignored", not s.has_cell(&"g.kills", "class:medic") and s.get_cell(&"g.kills", "weapon:rifle") == 2.0)
+
+	tracker.record(p, &"g.longest", 40.0, {"weapon": &"rifle"})
+	tracker.record(p, &"g.longest", 25.0, {"weapon": &"rifle"})
+	_check("a best cell keeps the higher by its own kind", s.get_cell(&"g.longest", "weapon:rifle") == 40.0)
+	_check("a stat with no weapon given has no weapon cell", not s.has_cell(&"g.shots", "weapon:rifle"))
+
+	tracker.set_context({"map": ""})
+	tracker.record(p, &"g.kills")
+	_check("clearing the context stops the map cell", s.get_cell(&"g.kills", "map:dm_canyon") == 4.0 and s.get_value(&"g.kills") == 5.0)
+
+	_check("the cells group for the wire", s.to_by()["weapon"]["rifle"]["g.kills"] == 2.0 and s.to_by()["map"]["dm_canyon"]["g.kills"] == 4.0)
+
+	var delta := DotStatsValues.new()
+	delta.record(schema.find(&"g.kills"), 5.0, {"weapon": "rifle"})
+	s.merge_from(delta, schema)
+	_check("merge_from folds cells by kind", s.get_cell(&"g.kills", "weapon:rifle") == 7.0)
+
+	_check("a derived stat cannot be recorded", not tracker.record(p, &"g.accuracy", 1.0).ok and "derived" in refusals)
+	_check("a fractional INT is refused", not tracker.record(p, &"g.kills", 0.5).ok and "not_integer" in refusals)
+	_check("a reading past max is refused", not tracker.record(p, &"g.longest", 900.0).ok and "above_max" in refusals and s.get_value(&"g.longest") == 40.0)
+	_check("a bad axis value drops the cell, not the reading", tracker.record(p, &"g.kills", 1.0, {"weapon": "a b|c"}).ok and not s.cells.has("g.kills|weapon:a b|c"))
+
+	var landed := tracker.event(&"p2", &"kill", {"weapon": &"rifle", "distance": 33.5, "tags": PackedStringArray(["headshot"])})
+	var s2 := tracker.session_values(&"p2")
+	_check("an event runs its rules", landed == 2 and s2.get_value(&"g.kills") == 1.0 and s2.get_value(&"g.longest") == 33.5)
+	_check("with the weapon cell from the data", s2.get_cell(&"g.longest", "weapon:rifle") == 33.5)
+	tracker.event(&"p2", &"shot", {"tags": PackedStringArray(["hit"])})
+	tracker.event(&"p2", &"shot", {"tags": PackedStringArray(["hit", "practice"])})
+	tracker.event(&"p2", &"shot", {"tags": PackedStringArray()})
+	_check("when and unless filter by tag", s2.get_value(&"g.shots") == 1.0)
+	_check("an event with a missing value field skips that rule", tracker.event(&"p2", &"kill", {}) == 1)
+	_check("event_seen is emitted for every event", seen.size() == 5)
+
+	schema.rules.append(DotStatsRule.custom(&"bonus", &"g.kills", func(_pl, d): return float(d["n"]) * 2.0 if d.has("n") else NAN))
+	tracker.event(&"p2", &"bonus", {"n": 3})
+	tracker.event(&"p2", &"bonus", {})
+	_check("a custom rule decides its reading", s2.get_value(&"g.kills") == 8.0)
+
+	tracker.begin(&"p3", "Ada")
+	tracker.record(&"p3", &"g.kills", 1.0, {"weapon": &"rifle"})
+	_check("ending a player with cells returns them", tracker.end(&"p3").get_cell(&"g.kills", "weapon:rifle") == 1.0)
+	tracker.queue_free()
+
+	var logged := DotStatsTracker.new()
+	logged.schema = schema
+	logged.log_events = true
+	logged.max_events = 100
+	add_child(logged)
+	logged.set_context({"map": &"dm_canyon"})
+	logged.begin(&"q1", "Q", {"tmc_user": "u9", "server": "s1"})
+	logged.record(&"q1", &"g.kills", 1.0, {"weapon": &"rifle", "mood": &"angry", "bad": "a b"})
+	var rows := logged.drain_events()
+	_check("an event row has session, player, stat, dims, value and time", rows.size() == 1 and rows[0]["stat"] == "g.kills" and rows[0]["player"] == "q1" and rows[0]["session"] == logged.session_info(&"q1")["session"] and rows[0]["value"] == 1.0 and rows[0]["t"] > 0.0)
+	_check("its dimensions are free-form but clean", rows[0]["dims"] == {"map": "dm_canyon", "weapon": "rifle", "mood": "angry"})
+	_check("draining empties the log", logged.drain_events().is_empty())
+	_check("a session is opaque unless linking is on", not logged.session_info(&"q1").has("tmc_user") and logged.session_info(&"q1")["server"] == "s1")
+	logged.link_tmc_user = true
+	logged.begin(&"q2", "R", {"tmc_user": "u9"})
+	_check("an opted-in session carries the TMC user", logged.session_info(&"q2")["tmc_user"] == "u9")
+	var ended: Array = []
+	logged.session_ended.connect(func(row): ended.append(row))
+	logged.end(&"q2")
+	_check("ending a session reports its duration", ended.size() == 1 and ended[0].has("duration") and ended[0]["map"] == "dm_canyon")
+	logged.bot_check = func(id): return str(id).begins_with("bot_")
+	logged.begin(&"bot_1", "Bot", {"tmc_user": "u1"})
+	logged.record(&"bot_1", &"g.kills")
+	logged.record(&"q1", &"g.kills")
+	var mixed := logged.drain_events()
+	_check("a bot's events carry is_bot=true and a human's false", mixed[0]["is_bot"] == true and mixed[1]["is_bot"] == false)
+	_check("a bot never carries a linked-user claim", not logged.session_info(&"bot_1").has("tmc_user") and logged.session_info(&"bot_1")["is_bot"] == true and logged.session_info(&"q1")["is_bot"] == false)
+	logged.queue_free()
+	_line("")
+	_done()
+
+
+func _test_batch_ids() -> void:
+	_section("batch ids and source")
+
+	var backbone := FakeBackbone.new()
+	var reporter := DotStatsReporter.with_client(backbone, _make_schema())
+	reporter.queue(&"p1", "Ada", {"kills": 3})
+	backbone.fail = true
+	await reporter.flush()
+	reporter.queue(&"p1", "Ada", {"kills": 2})
+	reporter.queue(&"p2", "Bob", {"deaths": 1})
+	await reporter.flush()
+	_check("a failed batch is resent under the same id with the same payload", backbone.calls.size() == 2 and backbone.calls[0]["body"]["batch"] == backbone.calls[1]["body"]["batch"] and backbone.calls[0]["body"]["players"] == backbone.calls[1]["body"]["players"])
+	backbone.fail = false
+	var ok := await reporter.flush_all()
+	_check("what was queued meanwhile follows as a new batch", ok.ok and backbone.calls.size() == 4 and backbone.calls[3]["body"]["batch"] != backbone.calls[2]["body"]["batch"] and reporter.queued() == 0)
+	_check("a batch id is sent on the first attempt", str(backbone.calls[0]["body"].get("batch", "")) != "")
+
+	var client_def: DotStatsSchema = DotStatsSchema.from_dictionary({"stats": [{"id": "x", "kind": "COUNTER", "source": "client"}, {"id": "y", "kind": "COUNTER"}]}).value
+	_check("define sends source in the site's case", DotStatsReporter.wire_definition(client_def.find(&"x"))["source"] == "CLIENT" and DotStatsReporter.wire_definition(client_def.find(&"y"))["source"] == "SERVER")
+	_line("")
+	_done()
+
 
 func _test_client() -> void:
 	_section("client")

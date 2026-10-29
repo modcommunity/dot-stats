@@ -48,5 +48,9 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - The reporter coalesces per player, bounds by players dropping the oldest, keeps its queue on failure, and logs a 403 with `STATS_WRITE`. [backbone](docs/backbone.md#three-properties-each-the-answer-to-a-lost-report)
 - `publish` is off by default per stat; unpublished or undeclared readings are skipped with one warning. [backbone](docs/backbone.md#three-properties-each-the-answer-to-a-lost-report)
 - The player id is a scoped pseudonym; the reporter refuses an account-shaped uid before it leaves the process. [backbone](docs/backbone.md#the-player-id-is-a-pseudonym-and-the-reporter-enforces-it)
+- v2 declarations add `type`, `min`/`max`, `max_rate`, up to two `breakdowns` (weapon, map; never crossed), a derived stat (ratio, difference, sum, per_minute over two stored stats, never stored), display hints and `source` (server or client; the site refuses client submissions for server stats). A v1 declaration loads unchanged.
+- Breakdown cells merge by the stat's own kind; `set_context` supplies axes a record omits, and `event()` runs `rules` (event to stat, `when`/`unless` tags, a value field or callback).
+- With `log_events`, `drain_events()` returns append-only rows `{session, player, is_bot, stat, dims, value, t}`; sessions are first-class (`session_info`, `session_ended`). Bots (`begin` meta `is_bot` or `bot_check`) never carry a linked-user claim; `tmc_user` is kept only with `link_tmc_user`.
+- The reporter sends a batch id and resends an unacknowledged batch unchanged under the same id.
 
 Deliberately not here: app-wide totals across servers, server-level figures, anti-cheat, a tracker in dot-server. [design](docs/design.md#deliberately-not-here)

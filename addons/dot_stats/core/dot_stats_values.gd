@@ -16,13 +16,20 @@ extends RefCounted
 ## stat id -> float
 var values: Dictionary = {}
 
+## "stat|axis:value" -> float, the breakdown cells; each merges by its own stat's kind.
+var cells: Dictionary = {}
+
+
+static func cell_key(id: StringName, cell: String) -> String:
+	return String(id) if cell == "" else "%s|%s" % [id, cell]
+
 
 ## Applies a reading by the stat's own rule and returns the new value.
 ##
 ## Refuses a non-finite reading rather than storing it: a NaN counter can never
 ## be added to again and a NaN best can never be beaten, and nothing downstream
 ## can tell a poisoned value from a real one.
-func record(def: DotStatsDef, reading: float) -> DotResult:
+func record(def: DotStatsDef, reading: float, dims: Dictionary = {}) -> DotResult:
 	if not is_finite(reading):
 		return DotResult.fail(
 			DotError.CODE_INVALID,
@@ -32,7 +39,34 @@ func record(def: DotStatsDef, reading: float) -> DotResult:
 	var has := values.has(def.id)
 	var next := def.merge(float(values.get(def.id, 0.0)), reading, has)
 	values[def.id] = next
+	for axis in dims:
+		var key := cell_key(def.id, "%s:%s" % [axis, dims[axis]])
+		cells[key] = def.merge(float(cells.get(key, 0.0)), reading, cells.has(key))
 	return DotResult.success(next)
+
+
+## A held value of [param id] in [param cell] ("axis:value"), or the total when "".
+func get_cell(id: StringName, cell: String = "", fallback: float = 0.0) -> float:
+	var key := cell_key(id, cell)
+	return float(cells.get(key, fallback)) if cell != "" else float(values.get(id, fallback))
+
+
+func has_cell(id: StringName, cell: String = "") -> bool:
+	return values.has(id) if cell == "" else cells.has(cell_key(id, cell))
+
+
+## Cells grouped for the wire: {axis: {value: {stat: float}}}.
+func to_by() -> Dictionary:
+	var out := {}
+	for key in cells:
+		var parts := str(key).split("|", true, 1)
+		var av := parts[1].split(":", true, 1)
+		if not out.has(av[0]):
+			out[av[0]] = {}
+		if not out[av[0]].has(av[1]):
+			out[av[0]][av[1]] = {}
+		out[av[0]][av[1]][parts[0]] = float(cells[key])
+	return out
 
 
 func get_value(id: StringName, fallback: float = 0.0) -> float:
@@ -53,6 +87,7 @@ func size() -> int:
 
 func clear() -> void:
 	values.clear()
+	cells.clear()
 
 
 ## Folds another set in, stat by stat, by the schema's rules.
@@ -69,6 +104,11 @@ func merge_from(other: DotStatsValues, schema: DotStatsSchema) -> void:
 		values[id] = def.merge(
 			float(values.get(id, 0.0)), float(other.values[id]), has
 		)
+	for key in other.cells:
+		var def := schema.find(StringName(str(key).split("|")[0]))
+		if def == null:
+			continue
+		cells[key] = def.merge(float(cells.get(key, 0.0)), float(other.cells[key]), cells.has(key))
 
 
 ## A copy, with string keys, for a JSON body.
@@ -97,6 +137,7 @@ static func from_dictionary(data: Dictionary) -> DotStatsValues:
 func duplicate_values() -> DotStatsValues:
 	var v := DotStatsValues.new()
 	v.values = values.duplicate()
+	v.cells = cells.duplicate()
 	return v
 
 

@@ -55,6 +55,14 @@ Keep anything competitive on the tracker. `DotStatsClient` is for launches, time
 
 On the process that holds the integration credential: a dedicated server, or the app's own service. **Never in a client build.** An integration token in a client is a token in every player's hands, and a stat a client reports about itself is a stat it chose. That surface is `DotStatsClient`, with the player's own token.
 
+## v2 declarations, cells, events and sessions
+
+A declaration may add `type`, `min`/`max`, `max_rate`, up to two `breakdowns` (weapon, map, never crossed), a derived stat (ratio, difference, sum, per_minute over two stored stats, never stored), display hints and `source` (server or client). A v1 declaration loads unchanged and a schema version above 2 is refused. A breakdown cell is keyed `stat|axis:value` and merges by the stat's own kind through `DotStatsDef.merge`. `set_context` fills an axis a record omits, and `event()` runs the schema's `rules` (event to stat, `when`/`unless` tags, a value field or callback).
+
+With `log_events` the tracker keeps append-only rows `{session, player, is_bot, stat, dims, value, t}` for `drain_events()`, and sessions are first-class (`session_info`, `session_ended`). A bot (`begin` meta `is_bot`, or `bot_check`) never carries a linked-user claim; `tmc_user` is kept only with `link_tmc_user`. The reporter freezes each batch under an id and resends it unchanged until acknowledged; define sends `source` in the site's upper case.
+
+Not yet sent: the reporter still posts the v1 shape. The site's `/stats/v2/submit` takes `sessions` and per-player `by` cells (the site's stats-site-contract.md); wiring that is the next step.
+
 ## Deliberately not here
 
 - **App-wide totals across servers.** Two servers' keys for one player are uncorrelatable by design. A per-app view per player exists only under the app scope key, which is the player's to ask for, and which `DotStatsClient` and an app-scoped tracker both use.

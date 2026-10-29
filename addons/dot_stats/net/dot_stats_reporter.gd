@@ -157,13 +157,18 @@ func queue(player_id: StringName, player_name: String, readings: Dictionary) -> 
 	return DotResult.success(accepted)
 
 
+## The batch sent and not yet acknowledged: resent unchanged, under the same id, until it is.
+var _inflight: Dictionary = {}
+var _batch_seq: int = 0
+
+
 func queued() -> int:
-	return _queue.size()
+	return _queue.size() + int(_inflight.get("players", []).size())
 
 
 ## Sends up to [member batch_limit] players. Removes them only on success.
 func flush() -> DotResult:
-	if _queue.is_empty():
+	if _queue.is_empty() and _inflight.is_empty():
 		return DotResult.success(0)
 
 	if not is_available():
@@ -173,20 +178,23 @@ func flush() -> DotResult:
 			"assign DotStatsReporter.client from dot-auth's DotBackboneClient"
 		)
 
-	var ids: Array = _queue.keys()
-	var count := mini(ids.size(), batch_limit)
-	var players: Array = []
-
-	for i in range(count):
-		var row: Dictionary = _queue[ids[i]]
-		players.append({
-			"player": String(ids[i]),
-			"name": str(row["name"]),
-			"stats": (row["values"] as DotStatsValues).to_dictionary(),
-		})
+	if _inflight.is_empty():
+		var ids: Array = _queue.keys()
+		var players: Array = []
+		for i in range(mini(ids.size(), batch_limit)):
+			var row: Dictionary = _queue[ids[i]]
+			players.append({
+				"player": String(ids[i]),
+				"name": str(row["name"]),
+				"stats": (row["values"] as DotStatsValues).to_dictionary(),
+			})
+			_queue.erase(ids[i])
+		_batch_seq += 1
+		_inflight = {"batch": "%d-%d-%d" % [Time.get_unix_time_from_system(), randi(), _batch_seq], "players": players}
+	var count: int = _inflight["players"].size()
 
 	var result: Variant = await client.call(
-		"post_integration", SUBMIT_PATH, {"players": players}
+		"post_integration", SUBMIT_PATH, {"players": _inflight["players"], "batch": _inflight["batch"]}
 	)
 
 	if not (result is DotResult):
@@ -213,8 +221,7 @@ func flush() -> DotResult:
 			)
 		return typed
 
-	for i in range(count):
-		_queue.erase(ids[i])
+	_inflight = {}
 	sent += count
 	last_error = ""
 
@@ -225,7 +232,7 @@ func flush() -> DotResult:
 ## Flushes until the queue is empty or a flush fails.
 func flush_all() -> DotResult:
 	var total := 0
-	while not _queue.is_empty():
+	while not _queue.is_empty() or not _inflight.is_empty():
 		var res := await flush()
 		if not res.ok:
 			return res
@@ -357,12 +364,4 @@ func describe() -> Dictionary:
 ## here. `to_dictionary()` is this addon's file format, not the wire, and sending it
 ## had every definition refused by the schema — the two ends had never met.
 static func wire_definition(d: DotStatsDef) -> Dictionary:
-	return {
-		"key": String(d.id),
-		"name": d.display_name,
-		"description": d.description,
-		"kind": d.kind_name(),
-		"unit": d.unit,
-		"decimals": d.decimals,
-		"visible": d.visible,
-	}
+	return d.to_wire()

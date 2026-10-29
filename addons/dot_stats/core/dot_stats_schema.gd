@@ -25,6 +25,11 @@ const MAX_STATS := 200
 
 @export var stats: Array[DotStatsDef] = []
 
+## Event rules for [method DotStatsTracker.event].
+@export var rules: Array[DotStatsRule] = []
+
+const VERSION := 2
+
 var _by_id: Dictionary = {}
 var _indexed_count: int = -1
 
@@ -95,6 +100,55 @@ func validate() -> DotResult:
 			)
 		seen[d.id] = true
 
+	for d in stats:
+		if d.derived != null:
+			var bad := _validate_derived(d, seen)
+			if not bad.ok:
+				return bad
+	for r in rules:
+		if r == null or not seen.has(r.stat):
+			return DotResult.fail(
+				DotError.CODE_INVALID, "A rule names a stat that is not declared.",
+				String(r.stat) if r != null else ""
+			)
+		if _by_id_of(r.stat).derived != null:
+			return DotResult.fail(DotError.CODE_INVALID, "A rule cannot feed a derived stat.", String(r.stat))
+
+	return DotResult.success(self)
+
+
+func _by_id_of(sid: StringName) -> DotStatsDef:
+	for d in stats:
+		if d.id == sid:
+			return d
+	return null
+
+
+## A derived stat reads two declared, stored stats and breaks down by what both do.
+func _validate_derived(d: DotStatsDef, seen: Dictionary) -> DotResult:
+	for input in [d.derived.num, d.derived.den]:
+		if not seen.has(input):
+			return DotResult.fail(
+				DotError.CODE_INVALID, "A derived stat reads an undeclared stat.",
+				"%s: %s" % [d.id, input]
+			)
+		if _by_id_of(input).derived != null:
+			return DotResult.fail(
+				DotError.CODE_INVALID, "A derived stat cannot read another derived stat.",
+				"%s: %s" % [d.id, input]
+			)
+	var a := _by_id_of(d.derived.num)
+	var b := _by_id_of(d.derived.den)
+	for axis in d.breakdowns:
+		if not (axis in a.breakdowns) or not (axis in b.breakdowns):
+			return DotResult.fail(
+				DotError.CODE_INVALID, "A derived stat breaks down only by axes both inputs do.",
+				"%s: %s" % [d.id, axis]
+			)
+	if d.derived.op == DotStatsDerived.Op.PER_MINUTE and b.value_type != DotStatsDef.ValueType.DURATION:
+		return DotResult.fail(
+			DotError.CODE_INVALID, "per_minute divides by a DURATION stat.", "%s: %s" % [d.id, b.id]
+		)
 	return DotResult.success(self)
 
 
@@ -102,11 +156,19 @@ func to_dictionary() -> Dictionary:
 	var out: Array = []
 	for d in stats:
 		out.append(d.to_dictionary())
-	return {"stats": out}
+	var rule_list: Array = []
+	for r in rules:
+		rule_list.append(r.to_dictionary())
+	return {"version": VERSION, "stats": out, "rules": rule_list}
 
 
 static func from_dictionary(data: Dictionary) -> DotResult:
 	var schema := DotStatsSchema.new()
+	if int(data.get("version", 1)) > VERSION:
+		return DotResult.fail(
+			DotError.CODE_PARSE, "This schema is a newer version than dot-stats reads.",
+			str(data.get("version"))
+		)
 	var list: Variant = data.get("stats", [])
 	if not (list is Array):
 		return DotResult.fail(
@@ -122,6 +184,17 @@ static func from_dictionary(data: Dictionary) -> DotResult:
 		if not parsed.ok:
 			return parsed
 		schema.stats.append(parsed.value)
+
+	var rule_list: Variant = data.get("rules", [])
+	if not (rule_list is Array):
+		return DotResult.fail(DotError.CODE_PARSE, "A schema's 'rules' is a list.")
+	for entry in (rule_list as Array):
+		if not (entry is Dictionary):
+			return DotResult.fail(DotError.CODE_PARSE, "Each rule must be an object.")
+		var rule := DotStatsRule.from_dictionary(entry as Dictionary)
+		if not rule.ok:
+			return rule
+		schema.rules.append(rule.value)
 
 	var valid := schema.validate()
 	if not valid.ok:
@@ -159,5 +232,6 @@ func describe() -> Dictionary:
 	return {
 		"stats": stats.size(),
 		"published": published().size(),
+		"rules": rules.size(),
 		"ids": ids(),
 	}
