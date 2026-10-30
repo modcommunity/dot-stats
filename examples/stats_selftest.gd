@@ -12,7 +12,7 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 223
+const CHECKS := 225
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -405,6 +405,15 @@ func _test_reporter_refuses_account_ids() -> void:
 	_check("a scoped key is accepted", scoped.ok and reporter.queued() == 1)
 
 	_check("an empty id is not a player", not DotStatsReporter.is_player_id(""))
+
+	var lazy := DotStatsReporter.new()
+	lazy.schema = _make_schema()
+	lazy.client_service = &"stats_selftest_client"
+	_check("no client and none registered is unavailable", not lazy.is_available())
+	var fake := FakeBackbone.new()
+	DotRegistry.register(&"stats_selftest_client", fake)
+	_check("a client is found by service name", lazy.is_available() and lazy.client == fake)
+	DotRegistry.unregister_instance(&"stats_selftest_client", fake)
 
 	_line("")
 	_done()

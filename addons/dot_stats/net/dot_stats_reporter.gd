@@ -63,6 +63,9 @@ const ACCOUNT_PREFIX := "backbone:"
 ## The backbone client. Any object with `post_integration(String, Dictionary)`.
 var client: Object = null
 
+## Registry name to find a client under when [member client] is not set.
+var client_service: StringName = &"dot_backbone_client"
+
 ## The stats readings are checked against and coalesced by.
 var schema: DotStatsSchema = null
 
@@ -98,6 +101,9 @@ static func with_client(p_client: Object, p_schema: DotStatsSchema) -> DotStatsR
 
 
 func is_available() -> bool:
+	if client == null or not is_instance_valid(client):
+		var found := DotRegistry.get_service(client_service)
+		client = found if found != null and found.has_method("post_integration") else null
 	return client != null and client.has_method("post_integration") and schema != null
 
 
