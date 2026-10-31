@@ -1,0 +1,75 @@
+extends Node
+## Offline suite for DotStatsRank. godot --headless --path . res://examples/rank_selftest.tscn
+
+var _passed := 0
+var _failed := 0
+var _filed: Dictionary = {}
+
+
+func _ready() -> void:
+	var r := DotStatsRank.new()
+	r.record_fn = func(p: Variant, s: StringName, v: float) -> void: _filed[p] = [s, v]
+
+	_check(is_equal_approx(r.weighted({"kills": 10, "deaths": 4, "headshots": 2, "points": 500}), 10.0 - 2.0 + 1.0 + 5.0), "default weights")
+	r.configure({"terms": [{"stat": "kills", "weight": 100.0, "per": "deaths", "cap": 300.0}], "scale": 2.0, "offset": 10.0})
+	_check(is_equal_approx(r.weighted({"kills": 6, "deaths": 3}), (10.0 + 200.0) * 2.0), "ratio term, offset, scale")
+	_check(is_equal_approx(r.weighted({"kills": 60, "deaths": 3}), (10.0 + 300.0) * 2.0), "cap clamps a term")
+	_check(is_equal_approx(r.weighted({"kills": 5}), 20.0), "a zero divisor contributes nothing")
+
+	r.configure({"min_stat": "kills", "min_value": 10.0})
+	_check(r.publish(1, {"kills": 5, "deaths": 1}) == -1.0 and not _filed.has(1), "withheld below the minimum")
+	_check(r.publish(1, {"kills": 12, "deaths": 4}) > 0.0 and _filed[1][0] == &"rank_score", "published as rank_score")
+
+	var scoped := DotStatsRank.new()
+	scoped.configure_scoped({
+		"default": {"mode": "weighted", "scale": 1.0},
+		"apps": {"a": {"scale": 2.0}}, "servers": {"s1": {"mode": "elo", "elo_k": 40.0}},
+	}, "a", "s1")
+	_check(scoped.mode == &"elo" and scoped.scale == 2.0 and scoped.elo_k == 40.0, "server overrides app overrides default")
+	var other := DotStatsRank.new()
+	other.configure_scoped({"apps": {"a": {"scale": 2.0}}, "servers": {"s1": {"mode": "elo"}}}, "b", "s2")
+	_check(other.mode == &"weighted" and other.scale == 1.0, "an unlisted app and server get the defaults")
+
+	var c := DotStatsRank.new()
+	_check(c.apply_cvar("elo") and c.mode == &"elo", "cvar selects elo")
+	_check(c.apply_cvar("weighted:kills=2,deaths=-1") and c.terms.size() == 2 and c.mode == &"weighted", "cvar carries weights")
+	_check(not c.apply_cvar("glicko") and c.mode == &"weighted", "an unknown mode is refused and changes nothing")
+
+	var e := DotStatsRank.new()
+	e.mode = DotStatsRank.MODE_ELO
+	e.record_fn = r.record_fn
+	_filed.clear()
+	var moved := e.duel(1, 2)
+	_check(is_equal_approx(moved, 12.0) and is_equal_approx(e.rating_of(1), 1012.0) and is_equal_approx(e.rating_of(2), 988.0), "equal ratings move k/2")
+	_check(_filed[1][1] == 1012.0 and _filed[2][1] == 988.0, "both gauges filed")
+	e.seed_rating(3, 1400.0)
+	var upset := e.duel(2, 3)
+	_check(upset > 12.0 and e.duel(3, 2) < 12.0, "beating a stronger player pays more")
+	_check(e.duel(1, 1) == 0.0, "a suicide moves nothing")
+	_check(e.score(1) == e.rating_of(1), "elo score is the rating")
+	e.elo_floor = 990.0
+	e.seed_rating(4, 991.0)
+	var _m := e.duel(1, 4)
+	_check(e.rating_of(4) == 990.0, "the floor holds")
+
+	var sess := DotStatsValues.from_dictionary({"kills": 5.0, "deaths": 2.0})
+	var combined := DotStatsRank.combine({"kills": 10.0, "deaths": 1.0}, sess)
+	_check(combined["kills"] == 15.0 and combined["deaths"] == 3.0, "combine adds session to lifetime")
+
+	var copy := DotStatsRank.new()
+	copy.configure(JSON.parse_string(JSON.stringify(r.to_dictionary())))
+	_check(copy.terms == r.terms and copy.min_value == 10.0, "config round-trips through JSON")
+	var schema := DotStatsSchema.new()
+	var def := DotStatsRank.declare(schema)
+	_check(schema.find(&"rank_score") == def and def.publish and def.kind == DotStatsDef.Kind.GAUGE, "declare adds a published gauge")
+
+	print("rank_selftest: %d passed, %d failed" % [_passed, _failed])
+	get_tree().quit(1 if _failed > 0 else 0)
+
+
+func _check(ok: bool, what: String) -> void:
+	if ok:
+		_passed += 1
+	else:
+		_failed += 1
+		print("FAIL: ", what)
