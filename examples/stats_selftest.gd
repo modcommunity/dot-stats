@@ -12,7 +12,7 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 237
+const CHECKS := 242
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -1446,6 +1446,12 @@ func _test_kills() -> void:
 	var fed: Array = tracker.reporter._kills
 	var last: Dictionary = fed[fed.size() - 1]
 	_check("feed: fields", last["killer"] == "p1" and last["victim"] == "p100" and last["victim_bot"] == true and last["killer_bot"] == false and last["killer_name"] == "Ada" and last["victim_name"] == "" and last["map"] == "dm_feed" and last["headshot"] == true)
+	_check("hitzones: declared once", DotStatsHitzones.declare(tracker.schema) == 4 and DotStatsHitzones.declare(tracker.schema) == 0)
+	_check("hitzones: a hit files hits, damage, kills and side", feed.report_hit(1, 100, "rifle", &"head", 80.0, true, &"left"))
+	var hv: DotStatsValues = tracker.session_values(&"p1")
+	_check("hitzones: per weapon and zone cells", hv.get_cell(DotStatsHitzones.HITS, "weapon:rifle") == 1.0 and hv.get_cell(DotStatsHitzones.DAMAGE, "zone:head") == 80.0 and hv.get_cell(DotStatsHitzones.KILLS, "zone:head") == 1.0)
+	_check("hitzones: side cell", hv.get_cell(DotStatsHitzones.SIDE_HITS, "side:left") == 1.0)
+	_check("hitzones: self hits and empty zones are refused", not feed.report_hit(1, 1, "rifle", &"head", 5.0) and not feed.report_hit(1, 100, "rifle", &""))
 	tracker.report_to_backbone = false
 	tracker.queue_free()
 	_done()

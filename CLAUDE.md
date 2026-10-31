@@ -55,3 +55,5 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - The reporter sends a UUID batch id and resends an unacknowledged batch unchanged under it. Session ids go out as UUIDs (`DotStatsReporter.wire_session_id`: a UUID passes, anything else maps to a stable one). `examples/fixtures/dot_submit_v2.schema.json` mirrors the site validator and the selftest checks the real payload against it; refresh it when `dotstats/payload.ts` changes.
 
 Deliberately not here: app-wide totals across servers, server-level figures, anti-cheat, a tracker in dot-server. [design](docs/design.md#deliberately-not-here)
+
+- Per-zone hit stats: `DotStatsHitzones.declare(schema)` then `DotStatsEventFeed.report_hit(...)` (or `bind_hits`); a game supplies the damage event, never copies the recording.

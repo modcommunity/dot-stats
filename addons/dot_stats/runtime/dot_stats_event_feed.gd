@@ -51,6 +51,34 @@ func report_kill(killer: Variant, victim: Variant, weapon: String = "", meta: Di
 	return tracker.record_kill(k["key"], v["key"], weapon, data)
 
 
+## Files one landed hit by body zone (see [DotStatsHitzones]; the schema must declare them). [param side] is left/middle/right or "". World and self hits are refused.
+func report_hit(shooter: Variant, victim: Variant, weapon: String, zone: StringName, amount: float = 0.0, killed: bool = false, side: StringName = &"") -> bool:
+	if tracker == null or shooter == null or victim == null or zone == &"":
+		return false
+	var s := actor(shooter)
+	if s["key"] == &"" or s["key"] == actor(victim)["key"]:
+		return false
+	var dims := {"weapon": weapon if weapon != "" else "unknown", "zone": String(zone)}
+	var ok := tracker.record(s["key"], DotStatsHitzones.HITS, 1.0, dims).ok
+	if amount > 0.0:
+		ok = tracker.record(s["key"], DotStatsHitzones.DAMAGE, amount, dims).ok and ok
+	if killed:
+		ok = tracker.record(s["key"], DotStatsHitzones.KILLS, 1.0, dims).ok and ok
+	if side != &"":
+		dims["side"] = String(side)
+		ok = tracker.record(s["key"], DotStatsHitzones.SIDE_HITS, 1.0, dims).ok and ok
+	return ok
+
+
+## Connects a damage signal to [method report_hit]. [param adapter] maps its arguments to {shooter, victim, weapon, zone, amount, killed, side}.
+func bind_hits(source: Signal, adapter: Callable) -> void:
+	source.connect(func(a: Variant = null, b: Variant = null, c: Variant = null) -> void:
+		var e: Dictionary = adapter.call(a, b, c)
+		if e.is_empty():
+			return
+		var _r := report_hit(e.get("shooter"), e.get("victim"), str(e.get("weapon", "")), StringName(str(e.get("zone", ""))), float(e.get("amount", 0.0)), bool(e.get("killed", false)), StringName(str(e.get("side", "")))))
+
+
 ## Connects a kill signal. [param adapter] maps its arguments to {killer, victim, weapon, ...meta}; the signal's arity is the adapter's.
 func bind_kills(source: Signal, adapter: Callable) -> void:
 	source.connect(func(a: Variant = null, b: Variant = null, c: Variant = null) -> void:
