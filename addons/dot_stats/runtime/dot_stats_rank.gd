@@ -33,6 +33,8 @@ var record_fn: Callable = Callable()
 
 ## Elo mode: player to rating.
 var ratings: Dictionary = {}
+## Player to the [DotStatsValues] they held when the session began; see [method load_baseline].
+var baselines: Dictionary = {}
 
 
 ## Adds the published rank stat to [param schema].
@@ -178,8 +180,12 @@ func publish(player: Variant, values: Dictionary) -> float:
 	return s
 
 
-## Lifetime values plus this session's, for [method publish]. Counters add; the caller passes only counters.
-static func combine(baseline: Dictionary, session: DotStatsValues) -> Dictionary:
+## Lifetime values plus this session's, for [method publish]. With [param schema] each stat merges by its kind (a BEST keeps the higher); without, every stat adds, which is only right for counters.
+static func combine(baseline: Dictionary, session: DotStatsValues, schema: DotStatsSchema = null) -> Dictionary:
+	if schema != null:
+		var held := DotStatsValues.from_dictionary(baseline)
+		held.merge_from(session, schema)
+		return held.to_dictionary()
 	var out := {}
 	for k in baseline:
 		out[str(k)] = float(baseline[k])
@@ -189,12 +195,37 @@ static func combine(baseline: Dictionary, session: DotStatsValues) -> Dictionary
 	return out
 
 
+## Reads the player's stored lifetime totals once, at join, before this session's figures are flushed into the store (reading later would count them twice). Elo mode also seeds the rating from the stored rank.
+func load_baseline(store: DotStatsStore, player: Variant) -> DotResult:
+	var res: DotResult = await store.values_for(StringName(str(player)))
+	if not res.ok:
+		return res
+	seed_baseline(player, res.value as DotStatsValues)
+	return res
+
+
+## Sets the lifetime totals a player starts the session with, from any source (a store, the backbone, a test).
+func seed_baseline(player: Variant, lifetime: DotStatsValues) -> void:
+	baselines[player] = lifetime
+	if mode == MODE_ELO and lifetime.values.has(stat_id):
+		seed_rating(player, float(lifetime.values[stat_id]))
+
+
+## Weighted mode: publishes from the stored baseline plus [param session], so a short session does not reset a long career. A player with no baseline loaded ranks on the session alone.
+func publish_lifetime(player: Variant, session: DotStatsValues, schema: DotStatsSchema = null) -> float:
+	var base: DotStatsValues = baselines.get(player, null)
+	var held := base.to_dictionary() if base != null else {}
+	return publish(player, combine(held, session, schema))
+
+
 func forget(player: Variant) -> void:
 	ratings.erase(player)
+	baselines.erase(player)
 
 
 func reset() -> void:
 	ratings.clear()
+	baselines.clear()
 
 
 func describe() -> Dictionary:

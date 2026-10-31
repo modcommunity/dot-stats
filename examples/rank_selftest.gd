@@ -63,6 +63,8 @@ func _ready() -> void:
 	var def := DotStatsRank.declare(schema)
 	_check(schema.find(&"rank_score") == def and def.publish and def.kind == DotStatsDef.Kind.GAUGE, "declare adds a published gauge")
 
+	await _lifetime()
+
 	print("rank_selftest: %d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
 
@@ -73,3 +75,27 @@ func _check(ok: bool, what: String) -> void:
 	else:
 		_failed += 1
 		print("FAIL: ", what)
+
+
+func _lifetime() -> void:
+	var schema := DotStatsSchema.new()
+	schema.define(&"kills", DotStatsDef.Kind.COUNTER)
+	schema.define(&"best_streak", DotStatsDef.Kind.BEST)
+	var store := DotStatsStoreMemory.new()
+	store.schema = schema
+	var past := DotStatsValues.from_dictionary({"kills": 100.0, "best_streak": 9.0})
+	await store.merge(&"p1", past.to_dictionary(), null, "P1")
+	var r := DotStatsRank.new()
+	r.configure({"terms": [{"stat": "kills", "weight": 1.0}, {"stat": "best_streak", "weight": 10.0}]})
+	r.record_fn = func(p: Variant, s: StringName, v: float) -> void: _filed[p] = [s, v]
+	var res: DotResult = await r.load_baseline(store, &"p1")
+	var session := DotStatsValues.from_dictionary({"kills": 5.0, "best_streak": 4.0})
+	_check(res.ok and r.baselines.has(&"p1"), "baseline loaded from a store")
+	_check(r.publish_lifetime(&"p1", session, schema) == 105.0 + 90.0, "lifetime rank merges by kind (BEST keeps 9)")
+	_check(_filed[&"p1"][1] == 195.0, "lifetime figure filed as the gauge")
+	_check(r.publish_lifetime(&"new", session, schema) == 5.0 + 40.0, "no baseline ranks on the session alone")
+	var merged := DotStatsRank.combine({"kills": 100.0, "best_streak": 9.0}, session, schema)
+	_check(merged["kills"] == 105.0 and merged["best_streak"] == 9.0, "schema combine keeps the higher BEST")
+	r.mode = DotStatsRank.MODE_ELO
+	r.seed_baseline(&"e1", DotStatsValues.from_dictionary({"rank_score": 1300.0}))
+	_check(r.rating_of(&"e1") == 1300.0, "elo rating seeded from the stored rank")
