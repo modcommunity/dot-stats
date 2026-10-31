@@ -26,5 +26,6 @@ static func declare(schema: DotStatsSchema) -> int:
 		var def := schema.define(spec[0], DotStatsDef.Kind.COUNTER, spec[1])
 		def.breakdowns = spec[2]
 		def.category = "hitzones"
+		def.publish = true
 		added += 1
 	return added

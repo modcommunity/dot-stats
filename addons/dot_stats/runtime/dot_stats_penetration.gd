@@ -28,5 +28,6 @@ static func declare(schema: DotStatsSchema) -> int:
 		var def := schema.define(spec[0], DotStatsDef.Kind.COUNTER, spec[1])
 		def.breakdowns = PackedStringArray(["weapon", "kind"])
 		def.category = "penetration"
+		def.publish = true
 		added += 1
 	return added
