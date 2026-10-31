@@ -12,7 +12,7 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 246
+const CHECKS := 247
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -1456,6 +1456,7 @@ func _test_kills() -> void:
 	_check("penetration: a wall kill files hit, damage and kill", feed.report_penetration(1, 100, "rifle", DotStatsPenetration.KIND_WALL, 40.0, true))
 	var pv: DotStatsValues = tracker.session_values(&"p1")
 	_check("penetration: cells per weapon and kind", pv.get_cell(DotStatsPenetration.HITS, "kind:wall") == 1.0 and pv.get_cell(DotStatsPenetration.DAMAGE, "weapon:rifle") == 40.0 and pv.get_cell(DotStatsPenetration.KILLS, "kind:wall") == 1.0)
+	_check("penetration: a ricochet hit files under its own kind", feed.report_penetration(1, 100, "rifle", DotStatsPenetration.KIND_RICOCHET, 12.0) and tracker.session_values(&"p1").get_cell(DotStatsPenetration.HITS, "kind:ricochet") == 1.0)
 	_check("penetration: self hits and empty kinds are refused", not feed.report_penetration(1, 1, "rifle", &"body", 5.0) and not feed.report_penetration(1, 100, "rifle", &""))
 	tracker.report_to_backbone = false
 	tracker.queue_free()

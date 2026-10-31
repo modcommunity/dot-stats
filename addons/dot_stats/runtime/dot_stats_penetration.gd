@@ -11,6 +11,8 @@ const DAMAGE := &"penetration_damage"
 
 const KIND_WALL := &"wall"
 const KIND_BODY := &"body"
+## A hit by a round that bounced off a wall first (`sv_ricochet`).
+const KIND_RICOCHET := &"ricochet"
 
 
 ## Declares the three stats on [param schema] unless already present; returns how many were added.
