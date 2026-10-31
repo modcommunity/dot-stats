@@ -12,13 +12,13 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 225
+const CHECKS := 233
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 20
+const SECTIONS := 21
 
 var _passed := 0
 var _failed := 0
@@ -103,6 +103,7 @@ func _run() -> void:
 	await _test_batch_ids()
 	await _test_v2_submit()
 	await _test_site_contract()
+	await _test_kills()
 
 	_line("")
 	_line("%d passed, %d failed" % [_passed, _failed])
@@ -1400,6 +1401,43 @@ func _test_site_contract() -> void:
 	_done()
 
 
+func _test_kills() -> void:
+	_section("kills: who killed whom")
+	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://examples/fixtures/dot_submit_v2.schema.json"))
+	var backbone := FakeBackbone.new()
+	var tracker := DotStatsTracker.new()
+	tracker.schema = DotStatsSchema.from_dictionary({"stats": [{"id": "arena.kills", "kind": "COUNTER", "publish": true}]}).value
+	tracker.define_on_start = false
+	tracker.report_interval = 0.0
+	tracker.reporter.client = backbone
+	add_child(tracker)
+	tracker.set_context({"map": "dm_canyon", "mode": "ffa"})
+	_check("off by default: nothing is queued", not tracker.record_kill(&"a", &"b", "rifle") and tracker.reporter.pending_kills() == 0)
+	tracker.report_to_backbone = true
+	tracker.begin(&"a", "Ada", {})
+	_check("a kill is queued", tracker.record_kill(&"a", &"b", "zee.rifle", {"victim_name": "Bo", "victim_bot": true, "headshot": true}))
+	_check("a suicide and a world death are refused", not tracker.record_kill(&"a", &"a") and not tracker.record_kill(&"", &"a"))
+	backbone.fail = true
+	await tracker.flush()
+	backbone.fail = false
+	tracker.record_kill(&"b", &"a", "zee.rifle")
+	await tracker.flush()
+	_check("a failed batch is resent unchanged", backbone.calls.size() == 3 and backbone.calls[0]["body"] == backbone.calls[1]["body"] and backbone.calls[1]["body"]["kills"].size() == 1)
+	_check("the later kill rides the next batch, then nothing is pending", backbone.calls[2]["body"]["kills"].size() == 1 and tracker.reporter.pending_kills() == 0)
+	var k: Dictionary = backbone.calls[1]["body"]["kills"][0]
+	_check("fields: names, bot flags, weapon, map, mode", k["killer_name"] == "Ada" and k["victim_name"] == "Bo" and k["victim_bot"] == true and k["killer_bot"] == false and k["weapon"] == "zee.rifle" and k["map"] == "dm_canyon" and k["mode"] == "ffa" and k["headshot"] == true)
+	var errors := _validate_submit(backbone.calls[1]["body"], fx)
+	_check("the payload satisfies the site's validator", errors.is_empty(), null)
+	for i in 450:
+		tracker.reporter.note_kill({"killer": "x", "victim": "y%d" % i, "t": 1})
+	var before: int = backbone.calls.size()
+	await tracker.flush()
+	_check("a batch carries at most the kill limit", backbone.calls.size() - before == 3 and backbone.calls[before]["body"]["kills"].size() == DotStatsReporter.KILL_LIMIT)
+	tracker.report_to_backbone = false
+	tracker.queue_free()
+	_done()
+
+
 func _validate_submit(body: Dictionary, fx: Dictionary) -> Array:
 	var e: Array = []
 	var key := RegEx.create_from_string(fx["key"])
@@ -1430,6 +1468,20 @@ func _validate_submit(body: Dictionary, fx: Dictionary) -> Array:
 			e.append("session bot must be bool")
 		if str(s.get("name", "")).length() > int(fx["session"]["name_max"]) or str(s.get("map", "")).length() > int(fx["session"]["map_max"]):
 			e.append("session name/map too long")
+	var kills: Array = body.get("kills", [])
+	if kills.size() > int(lim["kills"]):
+		e.append("too many kills")
+	for kl in kills:
+		_allowed(kl, fx["kill"], "kill", e)
+		if pkey.search(str(kl.get("killer", ""))) == null or pkey.search(str(kl.get("victim", ""))) == null or kl.get("killer") == kl.get("victim"):
+			e.append("kill killer/victim key")
+		if not _is_int(kl.get("t"), 0):
+			e.append("kill t must be a non-negative integer")
+		for f in ["killer_bot", "victim_bot", "headshot"]:
+			if kl.has(f) and not kl[f] is bool:
+				e.append("kill %s must be bool" % f)
+		if str(kl.get("killer_name", "")).length() > 64 or str(kl.get("victim_name", "")).length() > 64 or str(kl.get("weapon", "")).length() > 48:
+			e.append("kill text too long")
 	var players: Array = body.get("players", [])
 	if players.size() > int(lim["players"]):
 		e.append("too many players")

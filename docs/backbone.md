@@ -31,7 +31,7 @@ website-city: `src/types/integration/stats.ts` (the contract), `src/lib/integrat
 | Endpoint | Scope | |
 | --- | --- | --- |
 | `POST /stats/define` | `STATS_WRITE` | declare; idempotent; a kind never changes |
-| `POST /stats/v2/submit` | `STATS_WRITE` | file deltas, sessions and breakdown cells, up to 50 players and 200 sessions, merged by kind |
+| `POST /stats/v2/submit` | `STATS_WRITE` | file deltas, sessions and breakdown cells, up to 50 players, 200 sessions and 200 kills (killer, victim, weapon, time, map, mode, bot flags; `DotStatsTracker.record_kill`), merged by kind |
 | `GET /stats/player` | `STATS_READ` | every value one player holds |
 | `GET /stats/top` | `STATS_READ` | one stat as a ranking, ranks derived |
 

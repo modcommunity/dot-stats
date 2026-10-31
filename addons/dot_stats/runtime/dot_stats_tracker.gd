@@ -190,7 +190,7 @@ func _exit_tree() -> void:
 		# Awaited, like the reporter's: a server that stops between flushes does not lose
 		# the last interval of everybody's lifetime totals either.
 		await flush_store()
-	if report_to_backbone and reporter.queued() > 0:
+	if report_to_backbone and (reporter.queued() > 0 or reporter.pending_kills() > 0):
 		# A final, awaited flush so a server that stops between reports does not
 		# lose the last interval of every player's play.
 		await reporter.flush_all()
@@ -300,6 +300,25 @@ func set_context(dims: Dictionary) -> void:
 			_context.erase(str(axis))
 		else:
 			_context[str(axis)] = str(dims[axis])
+
+
+## Records who killed whom, for the per-pair table on the site. Only sent with [member report_to_backbone].
+## [param meta] may carry killer_name, victim_name, killer_bot, victim_bot, headshot, map, mode; a bot id is
+## one the caller flags, since the tracker only knows the players it began.
+func record_kill(killer: StringName, victim: StringName, weapon: String = "", meta: Dictionary = {}) -> bool:
+	if not report_to_backbone:
+		return false
+	var k: Dictionary = _players.get(killer, {})
+	var v: Dictionary = _players.get(victim, {})
+	return reporter.note_kill({
+		"killer": String(killer), "victim": String(victim),
+		"killer_name": str(meta.get("killer_name", k.get("name", ""))),
+		"victim_name": str(meta.get("victim_name", v.get("name", ""))),
+		"killer_bot": bool(meta.get("killer_bot", k.get("is_bot", false))),
+		"victim_bot": bool(meta.get("victim_bot", v.get("is_bot", false))),
+		"weapon": weapon, "map": str(meta.get("map", _context.get("map", ""))), "mode": str(meta.get("mode", _context.get("mode", ""))),
+		"t": int(Time.get_unix_time_from_system()), "headshot": bool(meta.get("headshot", false)),
+	})
 
 
 func context() -> Dictionary:

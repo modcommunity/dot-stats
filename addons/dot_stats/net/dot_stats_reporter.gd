@@ -87,6 +87,14 @@ var _sessions: Dictionary = {}
 ## row key -> {"player", "name", "values": DotStatsValues, "bot", "session", "user"}, in arrival order.
 var _queue: Dictionary = {}
 
+## Kills waiting for the next batch, oldest first; the oldest are dropped past [member kill_cap].
+var _kills: Array = []
+
+## Most kills one batch carries; the site accepts the same number.
+const KILL_LIMIT := 200
+
+var kill_cap: int = 2000
+
 var sent: int = 0
 var dropped: int = 0
 var failures: int = 0
@@ -212,6 +220,10 @@ static func _uuid_from(b: PackedByteArray) -> String:
 	return "%s-%s-%s-%s-%s" % [h.substr(0, 8), h.substr(8, 4), h.substr(12, 4), h.substr(16, 4), h.substr(20, 12)]
 
 
+func pending_kills() -> int:
+	return _kills.size() + int(_inflight.get("kills", []).size())
+
+
 func queued() -> int:
 	return _queue.size() + int(_inflight.get("players", []).size())
 
@@ -233,8 +245,29 @@ func note_session(row: Dictionary, player_name: String = "") -> void:
 		_sessions.erase(_sessions.keys()[0])
 
 
+## Queues one kill (killer, victim, weapon, time, map, bot flags). World deaths and suicides are not pairs and are refused.
+func note_kill(kill: Dictionary) -> bool:
+	var killer := str(kill.get("killer", ""))
+	var victim := str(kill.get("victim", ""))
+	if killer == "" or victim == "" or killer == victim:
+		return false
+	_kills.append({
+		"killer": killer.substr(0, 64), "victim": victim.substr(0, 64),
+		"killer_name": str(kill.get("killer_name", "")).substr(0, 64),
+		"victim_name": str(kill.get("victim_name", "")).substr(0, 64),
+		"killer_bot": bool(kill.get("killer_bot", false)), "victim_bot": bool(kill.get("victim_bot", false)),
+		"weapon": str(kill.get("weapon", "")).substr(0, 48), "map": str(kill.get("map", "")).substr(0, 64),
+		"mode": str(kill.get("mode", "")).substr(0, 32), "t": int(kill.get("t", 0)),
+		"headshot": bool(kill.get("headshot", false)),
+	})
+	while _kills.size() > kill_cap:
+		_kills.pop_front()
+		dropped += 1
+	return true
+
+
 func _has_work() -> bool:
-	return not _queue.is_empty() or not _inflight.is_empty() or not _sessions.is_empty()
+	return not _queue.is_empty() or not _inflight.is_empty() or not _sessions.is_empty() or not _kills.is_empty()
 
 
 ## Sends up to [member batch_limit] players. Removes them only on success.
@@ -270,14 +303,18 @@ func flush() -> DotResult:
 		var frozen: Array = []
 		for sid in _sessions.keys().slice(0, SESSION_LIMIT):
 			frozen.append(_sessions[sid].duplicate())
+		var kills: Array = _kills.slice(0, KILL_LIMIT)
+		_kills = _kills.slice(kills.size())
 		_batch_seq += 1
 		_inflight = {
 			"batch": new_uuid(),
-			"players": players, "sessions": frozen,
+			"players": players, "sessions": frozen, "kills": kills,
 		}
 	var count: int = _inflight["players"].size()
 
 	var body := {"v": 2, "batch": _inflight["batch"], "sessions": _inflight["sessions"], "players": _inflight["players"]}
+	if not _inflight["kills"].is_empty():
+		body["kills"] = _inflight["kills"]
 	if server_id > 0:
 		body["server"] = server_id
 	var result: Variant = await client.call("post_integration", SUBMIT_PATH, body)
@@ -443,6 +480,7 @@ func describe() -> Dictionary:
 		"available": is_available(),
 		"queued": _queue.size(),
 		"sessions": _sessions.size(),
+		"kills": _kills.size(),
 		"sent": sent,
 		"dropped": dropped,
 		"failures": failures,
