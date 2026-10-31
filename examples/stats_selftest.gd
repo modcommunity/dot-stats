@@ -12,7 +12,7 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 233
+const CHECKS := 237
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -1433,6 +1433,19 @@ func _test_kills() -> void:
 	var before: int = backbone.calls.size()
 	await tracker.flush()
 	_check("a batch carries at most the kill limit", backbone.calls.size() - before == 3 and backbone.calls[before]["body"]["kills"].size() == DotStatsReporter.KILL_LIMIT)
+	var feed := DotStatsEventFeed.new(tracker)
+	feed.key_of = func(id: Variant) -> StringName: return StringName("p%s" % id)
+	feed.is_bot = func(id: Variant) -> bool: return int(id) >= 100
+	feed.name_of = func(id: Variant) -> String: return "p%s" % id if int(id) >= 100 else ""
+	feed.extra = func() -> Dictionary: return {"map": "dm_feed"}
+	var pending0: int = tracker.reporter.pending_kills()
+	tracker.begin(&"p1", "Ada")
+	_check("feed: a kill is queued", feed.report_kill(1, 100, "rifle", {"headshot": true}) and tracker.reporter.pending_kills() == pending0 + 1)
+	_check("feed: suicide and world refused", not feed.report_kill(1, 1) and not feed.report_kill(null, 1))
+	_check("feed: bot name equal to its key is no name, player name from begin", feed.actor(100)["name"] == "" and feed.actor(1)["name"] == "Ada" and feed.actor(100)["bot"] == true)
+	var fed: Array = tracker.reporter._kills
+	var last: Dictionary = fed[fed.size() - 1]
+	_check("feed: fields", last["killer"] == "p1" and last["victim"] == "p100" and last["victim_bot"] == true and last["killer_bot"] == false and last["killer_name"] == "Ada" and last["victim_name"] == "" and last["map"] == "dm_feed" and last["headshot"] == true)
 	tracker.report_to_backbone = false
 	tracker.queue_free()
 	_done()

@@ -71,3 +71,7 @@ Seam: neither dot-game nor dot-bot calls the tracker yet. Whoever wires it passe
 - **Server-level figures that are not about a player.** Rounds played, maps rotated: those are `DotBackboneClient.report_stats` and the site's own rollups.
 - **Anti-cheat.** Refusals here are structural: NaN, an undeclared stat, an account-shaped id. Plausibility needs the game's context.
 - **A tracker in dot-server.** A game's module builds one.
+
+## Event feeds
+
+`DotStatsEventFeed` turns a game's own events into tracker records. The game assigns Callables (`key_of`, `name_of`, `is_bot`, `extra`) and calls `report_kill` or `bind_kills`; the event shape, the bot flag, name resolution (a name equal to the key is no name, so a bot is never shown as its storage id) and refusal of suicides live there, and batching stays in the reporter. Hitzones, points and rank inputs are further `report_*` methods that resolve players through `actor()`.

@@ -245,7 +245,9 @@ func end(player_id: StringName) -> DotStatsValues:
 func session_info(player_id: StringName) -> Dictionary:
 	if not _players.has(player_id):
 		return {}
-	return _session_row(player_id, _players[player_id], 0.0)
+	var out := _session_row(player_id, _players[player_id], 0.0)
+	out["name"] = (_players[player_id] as Dictionary)["name"]
+	return out
 
 
 func _session_row(player_id: StringName, row: Dictionary, left: float) -> Dictionary:
