@@ -64,6 +64,7 @@ func _ready() -> void:
 	_check(schema.find(&"rank_score") == def and def.publish and def.kind == DotStatsDef.Kind.GAUGE, "declare adds a published gauge")
 
 	await _lifetime()
+	await _file_store()
 
 	print("rank_selftest: %d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(1 if _failed > 0 else 0)
@@ -99,3 +100,43 @@ func _lifetime() -> void:
 	r.mode = DotStatsRank.MODE_ELO
 	r.seed_baseline(&"e1", DotStatsValues.from_dictionary({"rank_score": 1300.0}))
 	_check(r.rating_of(&"e1") == 1300.0, "elo rating seeded from the stored rank")
+
+	var keyed := DotStatsRank.new()
+	keyed.configure({"terms": [{"stat": "kills", "weight": 1.0}]})
+	keyed.key_fn = func(who: Variant) -> StringName: return StringName("key-%s" % who)
+	await store.merge(&"key-7", DotStatsValues.from_dictionary({"kills": 40.0}).to_dictionary(), null, "K")
+	var kres: DotResult = await keyed.load_baseline(store, 7)
+	_check(kres.ok and keyed.baselines.has(7), "load_baseline finds a baseline stored under the key_fn key")
+	_check(keyed.publish_lifetime(7, DotStatsValues.from_dictionary({"kills": 2.0}), schema) == 42.0, "keyed lifetime rank adds the session")
+	_check(DotStatsRank.new().store_key(7) == &"7", "store_key defaults to the player id")
+
+
+func _file_store() -> void:
+	var path := "user://rank_selftest_stats.json"
+	DirAccess.remove_absolute(path)
+	var schema := DotStatsSchema.new()
+	schema.define(&"kills", DotStatsDef.Kind.COUNTER)
+	schema.define(&"best_streak", DotStatsDef.Kind.BEST)
+	var a := DotStatsStoreFile.new(path)
+	a.schema = schema
+	await a.merge(&"p1", {"kills": 10.0, "best_streak": 3.0}, null, "P1")
+	await a.merge(&"p1", {"kills": 5.0, "best_streak": 2.0}, null, "P1")
+	var b := DotStatsStoreFile.new(path)
+	b.schema = schema
+	var res: DotResult = await b.values_for(&"p1")
+	_check(res.ok and res.value.get_value(&"kills") == 15.0 and res.value.get_value(&"best_streak") == 3.0, "file store keeps totals across instances")
+	await b.merge(&"p1", {"kills": 1.0}, null, "P1")
+	var c := DotStatsStoreFile.new(path)
+	c.schema = schema
+	res = await c.values_for(&"p1")
+	_check(res.ok and res.value.get_value(&"kills") == 16.0, "file store writes through on merge")
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("{not json")
+	f.close()
+	var bad := DotStatsStoreFile.new(path)
+	bad.schema = schema
+	res = await bad.values_for(&"p1")
+	_check(not res.ok, "a corrupt file fails rather than reading as empty")
+	res = await bad.merge(&"p1", {"kills": 1.0}, null, "P1")
+	_check(not res.ok, "a corrupt file refuses a merge")
+	DirAccess.remove_absolute(path)

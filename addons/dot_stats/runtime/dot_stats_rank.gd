@@ -30,6 +30,8 @@ var elo_k: float = 24.0
 var elo_floor: float = 0.0
 ## [code]func(player: Variant, stat: StringName, value: float)[/code] filing the gauge with a tracker.
 var record_fn: Callable = Callable()
+## [code]func(player: Variant) -> StringName[/code]: the id the store and the tracker know a player by, when it is not the player id itself.
+var key_fn: Callable = Callable()
 
 ## Elo mode: player to rating.
 var ratings: Dictionary = {}
@@ -195,9 +197,16 @@ static func combine(baseline: Dictionary, session: DotStatsValues, schema: DotSt
 	return out
 
 
+## The key a player is filed under in a store and a tracker; [member key_fn], else the player id as text. The one place it is defined.
+func store_key(player: Variant) -> StringName:
+	if key_fn.is_valid():
+		return StringName(str(key_fn.call(player)))
+	return StringName(str(player))
+
+
 ## Reads the player's stored lifetime totals once, at join, before this session's figures are flushed into the store (reading later would count them twice). Elo mode also seeds the rating from the stored rank.
 func load_baseline(store: DotStatsStore, player: Variant) -> DotResult:
-	var res: DotResult = await store.values_for(StringName(str(player)))
+	var res: DotResult = await store.values_for(store_key(player))
 	if not res.ok:
 		return res
 	seed_baseline(player, res.value as DotStatsValues)
