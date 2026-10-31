@@ -57,4 +57,5 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 Deliberately not here: app-wide totals across servers, server-level figures, anti-cheat, a tracker in dot-server. [design](docs/design.md#deliberately-not-here)
 
 - Penetration stats: `DotStatsPenetration.declare(schema)` then `DotStatsEventFeed.report_penetration(...)` (or `bind_penetrations`).
+- One damage record to both: `DotStatsDamage.report(feed, damage)` files the zone hit and the wall/body/ricochet penetration from a `DotDamage` (duck-typed, no dot-combat dependency).
 - Per-zone hit stats: `DotStatsHitzones.declare(schema)` then `DotStatsEventFeed.report_hit(...)` (or `bind_hits`); a game supplies the damage event, never copies the recording.
