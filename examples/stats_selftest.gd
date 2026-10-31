@@ -12,7 +12,7 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 247
+const CHECKS := 248
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -935,6 +935,12 @@ func _check(what: String, passed: bool, res: DotResult = null) -> void:
 	_line("  %-48s FAILED%s" % [what, why])
 
 
+func _hitzone_schema_valid() -> bool:
+	var schema := DotStatsSchema.new()
+	DotStatsHitzones.declare(schema)
+	return schema.validate().ok
+
+
 func _finish() -> void:
 	if not DotPlatform.is_headless():
 		return
@@ -1052,7 +1058,7 @@ func _test_v2_declarations() -> void:
 	_check("and the v2 fields", wire_kills["maxRate"] == 120.0 and wire_kills["breakdowns"] == ["weapon", "map"] and wire_kills["column"] == "default" and not wire_kills.has("publish"))
 	_check("an unbounded stat sends no bound", not DotStatsReporter.wire_definition(schema.find(&"g.shots")).has("min"))
 
-	_check("three breakdowns are refused", _v2_refused(func(l): l[0]["breakdowns"] = ["weapon", "map", "class"]))
+	_check("five breakdowns are refused", _v2_refused(func(l): l[0]["breakdowns"] = ["weapon", "map", "class", "mode", "team"]))
 	_check("min above max is refused", _v2_refused(func(l): l[2]["min"] = 900))
 	_check("an unknown type is refused", _v2_refused(func(l): l[0]["type"] = "TEXT"))
 	_check("an unknown column is refused", _v2_refused(func(l): l[0]["column"] = "loud"))
@@ -1453,6 +1459,7 @@ func _test_kills() -> void:
 	_check("hitzones: side cell", hv.get_cell(DotStatsHitzones.SIDE_HITS, "side:left") == 1.0)
 	_check("hitzones: self hits and empty zones are refused", not feed.report_hit(1, 1, "rifle", &"head", 5.0) and not feed.report_hit(1, 100, "rifle", &""))
 	_check("penetration: declared once", DotStatsPenetration.declare(tracker.schema) == 3 and DotStatsPenetration.declare(tracker.schema) == 0)
+	_check("hitzones: the declared schema validates", DotStatsHitzones.declare(DotStatsSchema.new()) == 4 and _hitzone_schema_valid())
 	_check("penetration: a wall kill files hit, damage and kill", feed.report_penetration(1, 100, "rifle", DotStatsPenetration.KIND_WALL, 40.0, true))
 	var pv: DotStatsValues = tracker.session_values(&"p1")
 	_check("penetration: cells per weapon and kind", pv.get_cell(DotStatsPenetration.HITS, "kind:wall") == 1.0 and pv.get_cell(DotStatsPenetration.DAMAGE, "weapon:rifle") == 40.0 and pv.get_cell(DotStatsPenetration.KILLS, "kind:wall") == 1.0)

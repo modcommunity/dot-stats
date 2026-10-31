@@ -78,7 +78,8 @@ const FORMATS := ["", "number", "percent", "duration", "distance", "ratio"]
 const COLUMNS := ["default", "optional", "hidden"]
 const SOURCES := ["server", "client"]
 const BETTER := ["", "higher", "lower"]
-const MAX_BREAKDOWNS := 2
+## Matches the site (DOT_BREAKDOWNS_MAX); a cell is one "axis:value" dim string, so the count is not a storage limit.
+const MAX_BREAKDOWNS := 4
 
 @export var value_type: ValueType = ValueType.NUMBER
 
@@ -198,7 +199,7 @@ func _validate_v2() -> DotResult:
 	if not (format in FORMATS) or not (column in COLUMNS) or not (source in SOURCES) or not (better in BETTER):
 		return DotResult.fail(DotError.CODE_INVALID, "A format, column, source or better is not one of the allowed names.", sid)
 	if breakdowns.size() > MAX_BREAKDOWNS:
-		return DotResult.fail(DotError.CODE_INVALID, "A stat has at most 2 breakdowns.", sid)
+		return DotResult.fail(DotError.CODE_INVALID, "A stat has at most %d breakdowns." % MAX_BREAKDOWNS, sid)
 	for i in range(breakdowns.size()):
 		if not is_valid_id(breakdowns[i]) or breakdowns.find(breakdowns[i]) != i:
 			return DotResult.fail(DotError.CODE_INVALID, "A breakdown is an axis name, once.", sid)
