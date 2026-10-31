@@ -70,6 +70,31 @@ func report_hit(shooter: Variant, victim: Variant, weapon: String, zone: StringN
 	return ok
 
 
+## Files one hit by a round that passed [param kind] (wall or body) first; see [DotStatsPenetration]. World and self hits are refused.
+func report_penetration(shooter: Variant, victim: Variant, weapon: String, kind: StringName, amount: float = 0.0, killed: bool = false) -> bool:
+	if tracker == null or shooter == null or victim == null or kind == &"":
+		return false
+	var s := actor(shooter)
+	if s["key"] == &"" or s["key"] == actor(victim)["key"]:
+		return false
+	var dims := {"weapon": weapon if weapon != "" else "unknown", "kind": String(kind)}
+	var ok := tracker.record(s["key"], DotStatsPenetration.HITS, 1.0, dims).ok
+	if amount > 0.0:
+		ok = tracker.record(s["key"], DotStatsPenetration.DAMAGE, amount, dims).ok and ok
+	if killed:
+		ok = tracker.record(s["key"], DotStatsPenetration.KILLS, 1.0, dims).ok and ok
+	return ok
+
+
+## Connects a damage signal to [method report_penetration]. [param adapter] maps its arguments to {shooter, victim, weapon, kind, amount, killed}, or {} to skip the event.
+func bind_penetrations(source: Signal, adapter: Callable) -> void:
+	source.connect(func(a: Variant = null, b: Variant = null, c: Variant = null) -> void:
+		var e: Dictionary = adapter.call(a, b, c)
+		if e.is_empty():
+			return
+		var _r := report_penetration(e.get("shooter"), e.get("victim"), str(e.get("weapon", "")), StringName(str(e.get("kind", ""))), float(e.get("amount", 0.0)), bool(e.get("killed", false))))
+
+
 ## Connects a damage signal to [method report_hit]. [param adapter] maps its arguments to {shooter, victim, weapon, zone, amount, killed, side}.
 func bind_hits(source: Signal, adapter: Callable) -> void:
 	source.connect(func(a: Variant = null, b: Variant = null, c: Variant = null) -> void:
