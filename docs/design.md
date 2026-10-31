@@ -75,3 +75,7 @@ Seam: neither dot-game nor dot-bot calls the tracker yet. Whoever wires it passe
 ## Event feeds
 
 `DotStatsEventFeed` turns a game's own events into tracker records. The game assigns Callables (`key_of`, `name_of`, `is_bot`, `extra`) and calls `report_kill` or `bind_kills`; the event shape, the bot flag, name resolution (a name equal to the key is no name, so a bot is never shown as its storage id) and refusal of suicides live there, and batching stays in the reporter. Hitzones, points and rank inputs are further `report_*` methods that resolve players through `actor()`.
+
+## Points
+
+`DotStatsPoints` is one points score for any game: the game reports events (`award_kill`, `award`, `note_damage`, `survive`), the source table (kill, headshot, assist, streak, objective, survival, pickup, medal) holds the amounts and loads from JSON, and `record_fn` files each award with the tracker under the `declare`d stat. A client copy is filled with `mirror`. `examples/points_selftest.tscn` is the suite.
