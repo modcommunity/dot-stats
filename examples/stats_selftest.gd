@@ -12,7 +12,7 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 248
+const CHECKS := 249
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -1456,10 +1456,11 @@ func _test_kills() -> void:
 	_check("hitzones: a hit files hits, damage, kills and side", feed.report_hit(1, 100, "rifle", &"head", 80.0, true, &"left"))
 	var hv: DotStatsValues = tracker.session_values(&"p1")
 	_check("hitzones: per weapon and zone cells", hv.get_cell(DotStatsHitzones.HITS, "weapon:rifle") == 1.0 and hv.get_cell(DotStatsHitzones.DAMAGE, "zone:head") == 80.0 and hv.get_cell(DotStatsHitzones.KILLS, "zone:head") == 1.0)
+	_check("hitzones: joint weapon axes", hv.get_cell(DotStatsHitzones.HITS, "weapon_zone:rifle.head") == 1.0 and hv.get_cell(DotStatsHitzones.SIDE_HITS, "weapon_side:rifle.left") == 1.0)
 	_check("hitzones: side cell", hv.get_cell(DotStatsHitzones.SIDE_HITS, "side:left") == 1.0)
 	_check("hitzones: self hits and empty zones are refused", not feed.report_hit(1, 1, "rifle", &"head", 5.0) and not feed.report_hit(1, 100, "rifle", &""))
-	_check("penetration: declared once", DotStatsPenetration.declare(tracker.schema) == 3 and DotStatsPenetration.declare(tracker.schema) == 0)
 	_check("hitzones: the declared schema validates", DotStatsHitzones.declare(DotStatsSchema.new()) == 4 and _hitzone_schema_valid())
+	_check("penetration: declared once", DotStatsPenetration.declare(tracker.schema) == 3 and DotStatsPenetration.declare(tracker.schema) == 0)
 	_check("penetration: a wall kill files hit, damage and kill", feed.report_penetration(1, 100, "rifle", DotStatsPenetration.KIND_WALL, 40.0, true))
 	var pv: DotStatsValues = tracker.session_values(&"p1")
 	_check("penetration: cells per weapon and kind", pv.get_cell(DotStatsPenetration.HITS, "kind:wall") == 1.0 and pv.get_cell(DotStatsPenetration.DAMAGE, "weapon:rifle") == 40.0 and pv.get_cell(DotStatsPenetration.KILLS, "kind:wall") == 1.0)

@@ -16,10 +16,10 @@ const SIDE_HITS := &"hitzone_side_hits"
 static func declare(schema: DotStatsSchema) -> int:
 	var added := 0
 	for spec in [
-		[HITS, "Hits per zone", PackedStringArray(["weapon", "zone"])],
-		[DAMAGE, "Damage per zone", PackedStringArray(["weapon", "zone"])],
-		[KILLS, "Kills per zone", PackedStringArray(["weapon", "zone"])],
-		[SIDE_HITS, "Hits per side", PackedStringArray(["weapon", "side"])],
+		[HITS, "Hits per zone", PackedStringArray(["weapon", "zone", "weapon_zone"])],
+		[DAMAGE, "Damage per zone", PackedStringArray(["weapon", "zone", "weapon_zone"])],
+		[KILLS, "Kills per zone", PackedStringArray(["weapon", "zone", "weapon_zone"])],
+		[SIDE_HITS, "Hits per side", PackedStringArray(["weapon", "side", "weapon_side"])],
 	]:
 		if schema.has(spec[0]):
 			continue

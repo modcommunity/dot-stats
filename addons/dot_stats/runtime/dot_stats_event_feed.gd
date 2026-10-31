@@ -58,7 +58,9 @@ func report_hit(shooter: Variant, victim: Variant, weapon: String, zone: StringN
 	var s := actor(shooter)
 	if s["key"] == &"" or s["key"] == actor(victim)["key"]:
 		return false
-	var dims := {"weapon": weapon if weapon != "" else "unknown", "zone": String(zone)}
+	var wname := weapon if weapon != "" else "unknown"
+	# The joint axis is what lets the site show one weapon's zones; separate cells cannot be crossed.
+	var dims := {"weapon": wname, "zone": String(zone), "weapon_zone": "%s.%s" % [wname, zone]}
 	var ok := tracker.record(s["key"], DotStatsHitzones.HITS, 1.0, dims).ok
 	if amount > 0.0:
 		ok = tracker.record(s["key"], DotStatsHitzones.DAMAGE, amount, dims).ok and ok
@@ -66,6 +68,7 @@ func report_hit(shooter: Variant, victim: Variant, weapon: String, zone: StringN
 		ok = tracker.record(s["key"], DotStatsHitzones.KILLS, 1.0, dims).ok and ok
 	if side != &"":
 		dims["side"] = String(side)
+		dims["weapon_side"] = "%s.%s" % [wname, side]
 		ok = tracker.record(s["key"], DotStatsHitzones.SIDE_HITS, 1.0, dims).ok and ok
 	return ok
 
