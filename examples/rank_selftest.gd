@@ -19,6 +19,9 @@ func _ready() -> void:
 	r.configure({"min_stat": "kills", "min_value": 10.0})
 	_check(r.publish(1, {"kills": 5, "deaths": 1}) == -1.0 and not _filed.has(1), "withheld below the minimum")
 	_check(r.publish(1, {"kills": 12, "deaths": 4}) > 0.0 and _filed[1][0] == &"rank_score", "published as rank_score")
+	var neg := DotStatsRank.new()
+	neg.record_fn = r.record_fn
+	_check(neg.publish(2, {"deaths": 4}) == 0.0 and _filed[2][1] == 0.0, "a negative weighted score is published as 0, not mistaken for withheld")
 
 	var scoped := DotStatsRank.new()
 	scoped.configure_scoped({

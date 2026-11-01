@@ -170,7 +170,8 @@ func score(player: Variant, values: Dictionary = {}) -> float:
 		return rating_of(player)
 	if not qualifies(values):
 		return -1.0
-	return weighted(values)
+	# Floored at 0: a negative score would collide with the -1.0 "withheld" answer.
+	return maxf(0.0, weighted(values))
 
 
 ## Weighted mode: files [method score] as a gauge (rounded). Elo files itself in [method duel]. Returns what was filed, or -1.0.
