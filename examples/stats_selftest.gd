@@ -12,7 +12,7 @@ extends Node
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 250
+const CHECKS := 251
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -1472,9 +1472,17 @@ func _test_kills() -> void:
 	_check("hitzones: the declared schema validates", DotStatsHitzones.declare(DotStatsSchema.new()) == 4 and _hitzone_schema_valid())
 	_check("hook-declared stats pass the reporter publish filter", _hooks_published())
 	_check("penetration: declared once", DotStatsPenetration.declare(tracker.schema) == 3 and DotStatsPenetration.declare(tracker.schema) == 0)
+	var through := DotStatsFakeDamage.new()
+	through.attacker = 1
+	through.victim = 100
+	through.weapon_id = "rifle"
+	through.hit_group = &"knee"
+	through.health_lost = 20.0
+	through.context = {"penetrated": 1, "wallbang": false, "hit_side": "right"}
+	_check("hitzones: a hit through a body files a body-penetration and the knee zone", DotStatsDamage.report(feed, through) == 2 and tracker.session_values(&"p1").get_cell(DotStatsHitzones.HITS, "weapon_zone:rifle.knee") == 1.0 and tracker.session_values(&"p1").get_cell(DotStatsPenetration.HITS, "kind:body") == 1.0)
 	_check("penetration: a wall kill files hit, damage and kill", feed.report_penetration(1, 100, "rifle", DotStatsPenetration.KIND_WALL, 40.0, true))
 	var pv: DotStatsValues = tracker.session_values(&"p1")
-	_check("penetration: cells per weapon and kind", pv.get_cell(DotStatsPenetration.HITS, "kind:wall") == 1.0 and pv.get_cell(DotStatsPenetration.DAMAGE, "weapon:rifle") == 40.0 and pv.get_cell(DotStatsPenetration.KILLS, "kind:wall") == 1.0)
+	_check("penetration: cells per weapon and kind", pv.get_cell(DotStatsPenetration.HITS, "kind:wall") == 1.0 and pv.get_cell(DotStatsPenetration.DAMAGE, "weapon:rifle") == 60.0 and pv.get_cell(DotStatsPenetration.KILLS, "kind:wall") == 1.0)
 	_check("penetration: a ricochet hit files under its own kind", feed.report_penetration(1, 100, "rifle", DotStatsPenetration.KIND_RICOCHET, 12.0) and tracker.session_values(&"p1").get_cell(DotStatsPenetration.HITS, "kind:ricochet") == 1.0)
 	_check("penetration: self hits and empty kinds are refused", not feed.report_penetration(1, 1, "rifle", &"body", 5.0) and not feed.report_penetration(1, 100, "rifle", &""))
 	tracker.report_to_backbone = false
@@ -1579,3 +1587,15 @@ func _allowed(obj: Variant, spec: Dictionary, what: String, e: Array) -> void:
 
 func _is_int(v: Variant, minimum: int) -> bool:
 	return (v is int and v >= minimum) or (v is float and v == floorf(v) and v >= minimum)
+
+
+## Stand-in for a dot-combat DotDamage (dot-stats names no combat class).
+class DotStatsFakeDamage:
+	extends RefCounted
+	var attacker: Variant
+	var victim: Variant
+	var weapon_id: String
+	var hit_group: StringName
+	var health_lost: float
+	var lethal: bool = false
+	var context: Dictionary = {}
