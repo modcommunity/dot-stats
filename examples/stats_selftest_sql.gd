@@ -65,6 +65,16 @@ func _test_sql_store() -> void:
 			and driver.matching("RENAME TO dot_stats_values").size() == 1
 	)
 
+	await _sql_first_merges(store, driver, schema)
+	await _sql_existing_and_races(store, driver, schema)
+	await _sql_rankings(store, driver)
+
+	_line("")
+	_done()
+
+
+## A first merge, and breakdown cells.
+func _sql_first_merges(store: DotStatsStoreSql, driver: RacingDriver, schema: DotStatsSchema) -> void:
 	# A first merge: a read, then a plain INSERT per stat.
 	driver.clear()
 	driver.answers = {"SELECT stat, dim, amount, revision": []}
@@ -103,12 +113,6 @@ func _test_sql_store() -> void:
 		read_back.ok and (read_back.value as DotStatsValues).get_value(&"kills") == 8.0
 			and float((read_back.value as DotStatsValues).cells.get("kills|weapon:rifle", 0.0)) == 5.0
 	)
-
-	await _sql_existing_and_races(store, driver, schema)
-	await _sql_rankings(store, driver)
-
-	_line("")
-	_done()
 
 
 ## Merging into rows that exist, and losing races.
