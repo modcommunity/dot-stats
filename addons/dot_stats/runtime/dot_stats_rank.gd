@@ -164,21 +164,25 @@ func duel(winner: Variant, loser: Variant, weight: float = 1.0) -> float:
 	return moved
 
 
-## The published figure for [param player] in the current mode, or -1.0 when withheld. Weighted mode takes [param values] (lifetime plus session).
+## Whether [method score] has a figure for [param values]: always in Elo mode, in weighted mode once [method qualifies].
+func has_score(values: Dictionary = {}) -> bool:
+	return mode == MODE_ELO or qualifies(values)
+
+
+## The published figure for [param player] in the current mode, or NAN when withheld (see [method has_score]). Weighted mode takes [param values] (lifetime plus session) and may return a negative figure, so sort order among net-negative players survives.
 func score(player: Variant, values: Dictionary = {}) -> float:
 	if mode == MODE_ELO:
 		return rating_of(player)
 	if not qualifies(values):
-		return -1.0
-	# Floored at 0: a negative score would collide with the -1.0 "withheld" answer.
-	return maxf(0.0, weighted(values))
+		return NAN
+	return weighted(values)
 
 
-## Weighted mode: files [method score] as a gauge (rounded). Elo files itself in [method duel]. Returns what was filed, or -1.0.
+## Weighted mode: files [method score] as a gauge (rounded). Elo files itself in [method duel]. Returns what was filed, or NAN when withheld.
 func publish(player: Variant, values: Dictionary) -> float:
+	if not has_score(values):
+		return NAN
 	var s := score(player, values)
-	if s < 0.0:
-		return -1.0
 	_file(player, s)
 	return s
 

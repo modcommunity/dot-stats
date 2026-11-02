@@ -17,11 +17,14 @@ func _ready() -> void:
 	_check(is_equal_approx(r.weighted({"kills": 5}), 20.0), "a zero divisor contributes nothing")
 
 	r.configure({"min_stat": "kills", "min_value": 10.0})
-	_check(r.publish(1, {"kills": 5, "deaths": 1}) == -1.0 and not _filed.has(1), "withheld below the minimum")
+	_check(is_nan(r.publish(1, {"kills": 5, "deaths": 1})) and not r.has_score({"kills": 5}) and not _filed.has(1), "withheld below the minimum")
 	_check(r.publish(1, {"kills": 12, "deaths": 4}) > 0.0 and _filed[1][0] == &"rank_score", "published as rank_score")
 	var neg := DotStatsRank.new()
 	neg.record_fn = r.record_fn
-	_check(neg.publish(2, {"deaths": 4}) == 0.0 and _filed[2][1] == 0.0, "a negative weighted score is published as 0, not mistaken for withheld")
+	var neg_a := neg.publish(2, {"deaths": 4})
+	var neg_b := neg.publish(3, {"deaths": 8})
+	_check(neg_a < 0.0 and neg_b < neg_a and _filed[2][1] == roundf(neg_a) and not is_nan(neg_a), "a negative weighted score is published as is, and worse stays below less bad")
+	_check(not is_nan(neg.score(2, {"deaths": 4})) and neg.has_score({"deaths": 4}), "a negative score is not mistaken for withheld")
 
 	var scoped := DotStatsRank.new()
 	scoped.configure_scoped({
