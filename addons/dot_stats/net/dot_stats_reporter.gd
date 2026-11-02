@@ -283,33 +283,7 @@ func flush() -> DotResult:
 		)
 
 	if _inflight.is_empty():
-		var ids: Array = _queue.keys()
-		var players: Array = []
-		for i in range(mini(ids.size(), batch_limit)):
-			var row: Dictionary = _queue[ids[i]]
-			var vals: DotStatsValues = row["values"]
-			var entry := {
-				"player": str(row["player"]), "bot": bool(row["bot"]), "name": str(row["name"]),
-				"stats": vals.to_dictionary(),
-			}
-			if row["session"] != "":
-				entry["session"] = wire_session_id(row["session"])
-			if row["user"] != "" and not row["bot"]:
-				entry["user"] = str(row["user"]).substr(0, 64)
-			if not vals.cells.is_empty():
-				entry["by"] = vals.to_by()
-			players.append(entry)
-			_queue.erase(ids[i])
-		var frozen: Array = []
-		for sid in _sessions.keys().slice(0, SESSION_LIMIT):
-			frozen.append(_sessions[sid].duplicate())
-		var kills: Array = _kills.slice(0, KILL_LIMIT)
-		_kills = _kills.slice(kills.size())
-		_batch_seq += 1
-		_inflight = {
-			"batch": new_uuid(),
-			"players": players, "sessions": frozen, "kills": kills,
-		}
+		_freeze_batch()
 	var count: int = _inflight["players"].size()
 
 	var body := {"v": 2, "batch": _inflight["batch"], "sessions": _inflight["sessions"], "players": _inflight["players"]}
@@ -353,6 +327,37 @@ func flush() -> DotResult:
 
 	DotLog.debug(CHANNEL, "stats reported", {"players": count})
 	return DotResult.success(count)
+
+
+## Moves up to one batch out of the queues into [member _inflight], so a retry resends the same body.
+func _freeze_batch() -> void:
+	var ids: Array = _queue.keys()
+	var players: Array = []
+	for i in range(mini(ids.size(), batch_limit)):
+		var row: Dictionary = _queue[ids[i]]
+		var vals: DotStatsValues = row["values"]
+		var entry := {
+			"player": str(row["player"]), "bot": bool(row["bot"]), "name": str(row["name"]),
+			"stats": vals.to_dictionary(),
+		}
+		if row["session"] != "":
+			entry["session"] = wire_session_id(row["session"])
+		if row["user"] != "" and not row["bot"]:
+			entry["user"] = str(row["user"]).substr(0, 64)
+		if not vals.cells.is_empty():
+			entry["by"] = vals.to_by()
+		players.append(entry)
+		_queue.erase(ids[i])
+	var frozen: Array = []
+	for sid in _sessions.keys().slice(0, SESSION_LIMIT):
+		frozen.append(_sessions[sid].duplicate())
+	var kills: Array = _kills.slice(0, KILL_LIMIT)
+	_kills = _kills.slice(kills.size())
+	_batch_seq += 1
+	_inflight = {
+		"batch": new_uuid(),
+		"players": players, "sessions": frozen, "kills": kills,
+	}
 
 
 ## Flushes until the queue is empty or a flush fails.
