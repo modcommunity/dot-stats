@@ -77,7 +77,7 @@ Both land on the same rows, because a client files under the member's key for th
 ## Validating
 
 ```bash
-godot --headless --path . res://examples/stats_selftest.tscn   # 21 sections, 251 checks
+godot --headless --path . res://examples/stats_selftest.tscn
 
 # the SQL store against real SQLite, Postgres and MariaDB (dot-sql linked in addons/)
 ../dot-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn
