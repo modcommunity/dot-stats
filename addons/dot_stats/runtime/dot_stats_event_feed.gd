@@ -1,9 +1,8 @@
 class_name DotStatsEventFeed
 extends RefCounted
 ## Turns a game's own events into tracker records: the game supplies ids and an event source, never the shape.
-##
-## Batching stays in [DotStatsReporter]. Other inputs (hitzones, points, rank) add a [code]report_*[/code]
-## method that calls [method actor] the same way, so identity rules live in one place.
+## Batching stays in [DotStatsReporter]; other inputs add a [code]report_*[/code] method calling
+## [method actor], so identity rules live in one place.
 
 var tracker: DotStatsTracker
 ## [code]func(id: Variant) -> StringName[/code]: the stats key of a game-side id. Default is [code]StringName(str(id))[/code].

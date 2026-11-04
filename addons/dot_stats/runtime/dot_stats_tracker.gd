@@ -68,10 +68,8 @@ signal stored(result: DotResult)
 
 @export_group("Reporting")
 
-## Hand deltas to the reporter, at all.
-##
-## Off, every counter still works and nothing leaves the process. On, only stats
-## marked [member DotStatsDef.publish] go.
+## Hand deltas to the reporter at all. Off, every counter still works and nothing leaves the
+## process; on, only stats marked [member DotStatsDef.publish] go.
 @export var report_to_backbone: bool = false
 
 ## Seconds between flushes. 0 leaves flushing to the caller.
@@ -263,10 +261,9 @@ func _session_row(player_id: StringName, row: Dictionary, left: float) -> Dictio
 	return out
 
 
-## Returns the logged event rows and empties the log.
-##
-## Each row is `{session, player, is_bot, stat, dims, value, t}`: the append-only shape a column store
-## takes as it is; tables, totals and timeframes are queries over it.
+## Returns the logged event rows and empties the log. Each row is
+## `{session, player, is_bot, stat, dims, value, t}`, the append-only shape a column store takes as
+## it is; tables, totals and timeframes are queries over it.
 func drain_events() -> Array[Dictionary]:
 	var out := _events
 	_events = []
@@ -384,10 +381,9 @@ func record(player_id: StringName, stat_id: StringName, value: float = 1.0, dims
 	return applied
 
 
-## Runs every rule listening for [param event_name] over [param data] and returns how many readings landed.
-##
-## [param data] may carry `tags` (a PackedStringArray), numeric fields a rule's value names, and
-## breakdown values (`weapon`).
+## Runs every rule listening for [param event_name] over [param data] and returns how many readings
+## landed. [param data] may carry `tags` (a PackedStringArray), numeric fields a rule's value names,
+## and breakdown values (`weapon`).
 func event(player_id: StringName, event_name: StringName, data: Dictionary = {}) -> int:
 	if not _started and not start().ok:
 		return 0
@@ -506,11 +502,8 @@ func _checkpoint(player_id: StringName, row: Dictionary) -> void:
 		# store and the backbone are told of exactly the same readings.
 		_pend_for_store(player_id, str(row["name"]), delta)
 	if not report_to_backbone:
-		# Reporting off queues NOTHING and says nothing. Until 2026-09-25 a player leaving
-		# ([method end]) still pushed their delta into a queue no flush would ever send,
-		# and the reporter warned "will not be reported why=unpublished" for every
-		# unpublished stat — a WRN on every leave of every server that had simply
-		# switched reporting off, which is the default. Cleared so it cannot grow.
+		# Reporting off queues nothing: a leaver's delta would sit in a queue no flush ever sends,
+		# and the reporter would warn for every unpublished stat. Cleared so it cannot grow.
 		delta.clear()
 		return
 	var meta := {"session": row["session_id"], "bot": row["is_bot"], "user": row["tmc_user"], "map": row["map"]}

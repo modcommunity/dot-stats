@@ -147,7 +147,7 @@ func _test_reporter_reads() -> void:
 	_done()
 
 
-# --- The player's own client ------------------------------------------------
+# The player's own client
 
 func _v2_json() -> Dictionary:
 	return {

@@ -1,9 +1,8 @@
 class_name DotStatsHitzones
 extends RefCounted
 ## The stats a game keeps per body zone, declared once so every game shares ids and breakdowns.
-##
-## [method declare] adds them to a schema; [method DotStatsEventFeed.report_hit] fills them. The zone is a
-## breakdown axis, so the site's "weapon targets" diagram reads hits, damage and kills per weapon and zone.
+## [method declare] adds them to a schema; [method DotStatsEventFeed.report_hit] fills them. The zone
+## is a breakdown axis, so the site reads hits, damage and kills per weapon and zone.
 
 const HITS := &"hitzone_hits"
 const DAMAGE := &"hitzone_damage"
