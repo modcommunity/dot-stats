@@ -83,7 +83,7 @@ godot --headless --path . --script <path to dot-stats>/tools/export_site_defs.gd
     --source res://game/my_progress.gd --method schema --out deployment/stat-defs.json
 ```
 
-`--check` writes nothing and exits 1 when the file on disk is stale, so a suite can hold code and file together. `--game <id>` pins the site app id, which is left out by default so one file imports into any environment. The file is `DotStatsSchema.to_site_defs()`: a stat with no format has no `format` key (so an import keeps the site's), and `per_minute` derived stats are skipped with a warning, because the site computes only ratio, sum and diff.
+`--check` writes nothing and exits 1 when the file on disk is stale, so a suite can hold code and file together. `--game <id>` pins the site app id, which is left out by default so one file imports into any environment. The file is `DotStatsSchema.to_site_defs()`: a stat with no format has no `format` key (so an import keeps the site's), `per_minute` is written as `ratio` with the scale times 60, and `difference` as `diff`; a scaled `difference` is skipped with a warning, because the site's diff ignores scale.
 
 ## Validating
 

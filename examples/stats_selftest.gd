@@ -12,7 +12,7 @@ extends "res://examples/stats_selftest_sql.gd"
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 258
+const CHECKS := 259
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -145,10 +145,12 @@ func _test_schema() -> void:
 	var rows: Array = doc["stats"]
 	_check("site defs carry the format, version and app id", doc["format"] == "dot-stat-defs" and doc["version"] == 1 and doc["game"] == 7)
 	_check("site defs leave the app id out when it is 0", not site_schema.to_site_defs().has("game"))
-	_check("site defs list published stats in order", rows.size() == 3 and rows[0]["key"] == "early" and rows[1]["key"] == "late")
+	_check("site defs list published stats in order", rows.size() == 4 and rows[0]["key"] == "early" and rows[1]["key"] == "late")
 	_check("a derived stat names its inputs, difference as diff", rows[2]["derivedOp"] == "diff" and rows[2]["derivedNum"] == "late" and rows[2]["derivedDen"] == "early")
 	_check("an empty format is omitted, a set one kept", not rows[1].has("format") and rows[0]["format"] == "number")
-	_check("a per_minute stat is left out of the site defs", rows.size() == 3)
+	_check("a per_minute stat is exported as ratio with scale x60", rows.size() == 4 and rows[3]["derivedOp"] == "ratio" and rows[3]["derivedScale"] == 60.0)
+	ratio.derived.scale = 2.0
+	_check("a scaled difference is left out of the site defs", site_schema.to_site_defs()["stats"].size() == 3)
 	_check("a best stat keeps its kind in capitals", rows[0]["kind"] == "BEST")
 
 	var many := DotStatsSchema.new()

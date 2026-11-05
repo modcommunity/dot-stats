@@ -162,10 +162,10 @@ func to_dictionary() -> Dictionary:
 	return {"version": VERSION, "stats": out, "rules": rule_list}
 
 
-## True for a derived stat the site cannot compute (it knows ratio, sum and diff, not per_minute);
-## [method to_site_defs] leaves it out.
+## True for a derived stat the site cannot compute: its diff ignores scale, so a scaled difference
+## has no mapping. [method to_site_defs] leaves it out.
 func site_unsupported(d: DotStatsDef) -> bool:
-	return d.derived != null and d.derived.op == DotStatsDerived.Op.PER_MINUTE
+	return d.derived != null and d.derived.op == DotStatsDerived.Op.DIFFERENCE and d.derived.scale != 1.0
 
 
 ## The published stats as the site's stat-catalog document (`dot-stat-defs`, version 1), the file the
@@ -198,10 +198,11 @@ func to_site_defs(game: int = 0) -> Dictionary:
 			e["format"] = d.format
 		if d.derived != null:
 			var op := d.derived.op_name().to_lower()
-			e["derivedOp"] = "diff" if op == "difference" else op
+			e["derivedOp"] = "diff" if op == "difference" else ("ratio" if op == "per_minute" else op)
 			e["derivedNum"] = String(d.derived.num)
 			e["derivedDen"] = String(d.derived.den)
-			e["derivedScale"] = d.derived.scale
+			# The site's ratio has no seconds divisor, so per_minute is ratio times 60.
+			e["derivedScale"] = d.derived.scale * 60.0 if op == "per_minute" else d.derived.scale
 		out.append(e)
 	var doc := {"format": "dot-stat-defs", "version": 1, "stats": out}
 	if game > 0:
