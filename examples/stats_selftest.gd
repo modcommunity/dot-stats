@@ -12,7 +12,7 @@ extends "res://examples/stats_selftest_sql.gd"
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 251
+const CHECKS := 256
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -117,6 +117,29 @@ func _test_schema() -> void:
 
 	var bad := DotStatsSchema.from_dictionary({"stats": [{"id": "x", "kind": "median"}]})
 	_check("an unknown kind in a file is refused", not bad.ok)
+
+	var site_schema := DotStatsSchema.new()
+	var late := site_schema.define(&"late", DotStatsDef.Kind.COUNTER, "Late")
+	late.publish = true
+	late.order = 2
+	var early := site_schema.define(&"early", DotStatsDef.Kind.BEST, "Early")
+	early.publish = true
+	early.order = 1
+	site_schema.define(&"private_counter").publish = false
+	var ratio := site_schema.define(&"ratio", DotStatsDef.Kind.COUNTER, "Ratio")
+	ratio.publish = true
+	ratio.order = 3
+	ratio.derived = DotStatsDerived.new()
+	ratio.derived.op = DotStatsDerived.Op.DIFFERENCE
+	ratio.derived.num = &"late"
+	ratio.derived.den = &"early"
+	var doc := site_schema.to_site_defs(7)
+	var rows: Array = doc["stats"]
+	_check("site defs carry the format, version and app id", doc["format"] == "dot-stat-defs" and doc["version"] == 1 and doc["game"] == 7)
+	_check("site defs leave the app id out when it is 0", not site_schema.to_site_defs().has("game"))
+	_check("site defs list published stats in order", rows.size() == 3 and rows[0]["key"] == "early" and rows[1]["key"] == "late")
+	_check("a derived stat names its inputs, difference as diff", rows[2]["derivedOp"] == "diff" and rows[2]["derivedNum"] == "late" and rows[2]["derivedDen"] == "early")
+	_check("a best stat keeps its kind in capitals", rows[0]["kind"] == "BEST")
 
 	var many := DotStatsSchema.new()
 	for i in range(DotStatsSchema.MAX_STATS + 1):
