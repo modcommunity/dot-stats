@@ -12,7 +12,7 @@ extends "res://examples/stats_selftest_sql.gd"
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 256
+const CHECKS := 258
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -133,12 +133,22 @@ func _test_schema() -> void:
 	ratio.derived.op = DotStatsDerived.Op.DIFFERENCE
 	ratio.derived.num = &"late"
 	ratio.derived.den = &"early"
+	var pm := site_schema.define(&"per_min", DotStatsDef.Kind.COUNTER, "Per minute")
+	pm.publish = true
+	pm.order = 4
+	pm.derived = DotStatsDerived.new()
+	pm.derived.op = DotStatsDerived.Op.PER_MINUTE
+	pm.derived.num = &"late"
+	pm.derived.den = &"early"
+	early.format = "number"
 	var doc := site_schema.to_site_defs(7)
 	var rows: Array = doc["stats"]
 	_check("site defs carry the format, version and app id", doc["format"] == "dot-stat-defs" and doc["version"] == 1 and doc["game"] == 7)
 	_check("site defs leave the app id out when it is 0", not site_schema.to_site_defs().has("game"))
 	_check("site defs list published stats in order", rows.size() == 3 and rows[0]["key"] == "early" and rows[1]["key"] == "late")
 	_check("a derived stat names its inputs, difference as diff", rows[2]["derivedOp"] == "diff" and rows[2]["derivedNum"] == "late" and rows[2]["derivedDen"] == "early")
+	_check("an empty format is omitted, a set one kept", not rows[1].has("format") and rows[0]["format"] == "number")
+	_check("a per_minute stat is left out of the site defs", rows.size() == 3)
 	_check("a best stat keeps its kind in capitals", rows[0]["kind"] == "BEST")
 
 	var many := DotStatsSchema.new()

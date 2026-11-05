@@ -162,6 +162,12 @@ func to_dictionary() -> Dictionary:
 	return {"version": VERSION, "stats": out, "rules": rule_list}
 
 
+## True for a derived stat the site cannot compute (it knows ratio, sum and diff, not per_minute);
+## [method to_site_defs] leaves it out.
+func site_unsupported(d: DotStatsDef) -> bool:
+	return d.derived != null and d.derived.op == DotStatsDerived.Op.PER_MINUTE
+
+
 ## The published stats as the site's stat-catalog document (`dot-stat-defs`, version 1), the file the
 ## hub imports. [param game] is the site app id; 0 leaves it out so one file imports into any app.
 func to_site_defs(game: int = 0) -> Dictionary:
@@ -174,18 +180,22 @@ func to_site_defs(game: int = 0) -> Dictionary:
 	ordered.sort_custom(func(a: DotStatsDef, b: DotStatsDef) -> bool:
 		return a.order < b.order or (a.order == b.order and pos[a] < pos[b]))
 	for d in ordered:
+		if site_unsupported(d):
+			continue
 		var e := {
 			"key": String(d.id),
 			"name": d.display_name,
 			"description": d.description,
 			"kind": d.kind_name().to_upper() if d.derived == null else "COUNTER",
 			"unit": d.unit,
-			"format": d.format,
 			"decimals": d.decimals,
 			"category": d.category,
 			"column": "HIDDEN" if not d.visible else d.column.to_upper(),
 			"better": d.better if d.better != "" else null,
 		}
+		# An empty format would blank the one the site already stores on import.
+		if d.format != "":
+			e["format"] = d.format
 		if d.derived != null:
 			var op := d.derived.op_name().to_lower()
 			e["derivedOp"] = "diff" if op == "difference" else op

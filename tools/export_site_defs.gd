@@ -4,6 +4,8 @@ extends SceneTree
 ## really builds. Run inside the game project:
 ##   godot --headless --path . --script ../dot-stats/tools/export_site_defs.gd -- \
 ##     --source res://game/x_progress.gd --method schema --out deployment/stat-defs.json [--check] [--game 12]
+## A stat with an empty format has no "format" key; per_minute stats are skipped with a warning (the site
+## computes only ratio, sum and diff).
 ## --check writes nothing and exits 1 if the file on disk differs, so a suite can hold the two together.
 
 func _init() -> void:
@@ -22,6 +24,9 @@ func _init() -> void:
 		printerr("export_site_defs: schema invalid: %s" % valid.message)
 		quit(2)
 		return
+	for d in schema.published():
+		if schema.site_unsupported(d):
+			printerr("export_site_defs: skipped %s (per_minute is not understood by the site)" % d.id)
 	var text := JSON.stringify(schema.to_site_defs(int(args.get("game", 0))), "\t", false) + "\n"
 	if args.has("check"):
 		var have := FileAccess.get_file_as_string(out_path)
