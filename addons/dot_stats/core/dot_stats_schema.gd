@@ -162,6 +162,54 @@ func to_dictionary() -> Dictionary:
 	return {"version": VERSION, "stats": out, "rules": rule_list}
 
 
+## True for a derived stat the site cannot compute: its diff ignores scale, so a scaled difference
+## has no mapping. [method to_site_defs] leaves it out.
+func site_unsupported(d: DotStatsDef) -> bool:
+	return d.derived != null and d.derived.op == DotStatsDerived.Op.DIFFERENCE and d.derived.scale != 1.0
+
+
+## The published stats as the site's stat-catalog document (`dot-stat-defs`, version 1), the file the
+## hub imports. [param game] is the site app id; 0 leaves it out so one file imports into any app.
+func to_site_defs(game: int = 0) -> Dictionary:
+	var out: Array = []
+	var ordered := published()
+	# sort_custom is not stable, so ties fall back to declaration order.
+	var pos := {}
+	for i in ordered.size():
+		pos[ordered[i]] = i
+	ordered.sort_custom(func(a: DotStatsDef, b: DotStatsDef) -> bool:
+		return a.order < b.order or (a.order == b.order and pos[a] < pos[b]))
+	for d in ordered:
+		if site_unsupported(d):
+			continue
+		var e := {
+			"key": String(d.id),
+			"name": d.display_name,
+			"description": d.description,
+			"kind": d.kind_name().to_upper() if d.derived == null else "COUNTER",
+			"unit": d.unit,
+			"decimals": d.decimals,
+			"category": d.category,
+			"column": "HIDDEN" if not d.visible else d.column.to_upper(),
+			"better": d.better if d.better != "" else null,
+		}
+		# An empty format would blank the one the site already stores on import.
+		if d.format != "":
+			e["format"] = d.format
+		if d.derived != null:
+			var op := d.derived.op_name().to_lower()
+			e["derivedOp"] = "diff" if op == "difference" else ("ratio" if op == "per_minute" else op)
+			e["derivedNum"] = String(d.derived.num)
+			e["derivedDen"] = String(d.derived.den)
+			# The site's ratio has no seconds divisor, so per_minute is ratio times 60.
+			e["derivedScale"] = d.derived.scale * 60.0 if op == "per_minute" else d.derived.scale
+		out.append(e)
+	var doc := {"format": "dot-stat-defs", "version": 1, "stats": out}
+	if game > 0:
+		doc["game"] = game
+	return doc
+
+
 static func from_dictionary(data: Dictionary) -> DotResult:
 	var schema := DotStatsSchema.new()
 	if int(data.get("version", 1)) > VERSION:
