@@ -29,7 +29,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 ## Running and testing
 
-- The family's two steps ([game-dev/CLAUDE.md](../../CLAUDE.md#validating-anything)), then `godot --headless --path . res://examples/stats_selftest.tscn`.
+- The family's two steps ([family CLAUDE.md](../../CLAUDE.md#validating-anything)), then `godot --headless --path . res://examples/stats_selftest.tscn`.
 - Anything in the SQL store: `../dot-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn` (SQLite always; Postgres and MySQL with `DOT_SQL_PG_DSN` / `DOT_SQL_MYSQL_DSN`).
 - The backbone client is faked one level above HTTP (a class with `post_integration`), which is the seam the addon promises.
 - **Add a case for any change to the merge rule, the coalescing or the queue**: there a bug is a wrong number, not a crash.
