@@ -81,4 +81,4 @@ Seam: neither dot-game nor dot-bot calls the tracker yet. Whoever wires it passe
 
 ## Points
 
-`DotStatsPoints` is one points score for any game: the game reports events (`award_kill`, `award`, `note_damage`, `survive`), the source table (kill, headshot, assist, streak, objective, survival, pickup, medal) holds the amounts and loads from JSON, and `record_fn` files each award with the tracker under the `declare`d stat. A client copy is filled with `mirror`. `examples/points_selftest.tscn` is the suite.
+`DotStatsPoints` is one points score for any game: the game reports events (`award_kill`, `award`, `note_damage`, `survive`), the source table (kill, headshot, assist, streak, objective, survival, pickup, medal, quickscope) holds the amounts and loads from JSON, and `record_fn` files each award with the tracker under the `declare`d stat. A client copy is filled with `mirror`. `examples/points_selftest.tscn` is the suite.

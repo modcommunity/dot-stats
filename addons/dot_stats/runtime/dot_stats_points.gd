@@ -15,11 +15,13 @@ const SOURCE_SURVIVAL := &"survival"
 const SOURCE_MEDAL := &"medal"
 ## A collectable walked through; the scale is its value.
 const SOURCE_PICKUP := &"pickup"
+## A kill with a scope fired before the sights landed (the `quickscope` shot meta); the medal.
+const SOURCE_QUICKSCOPE := &"quickscope"
 
 ## The wire order of the built-in sources; a game that sends an award by index uses this list.
 const ORDER: Array[StringName] = [
 	SOURCE_KILL, SOURCE_HEADSHOT, SOURCE_CRITICAL, SOURCE_ASSIST, SOURCE_STREAK,
-	SOURCE_OBJECTIVE, SOURCE_SURVIVAL, SOURCE_MEDAL, SOURCE_PICKUP,
+	SOURCE_OBJECTIVE, SOURCE_SURVIVAL, SOURCE_MEDAL, SOURCE_PICKUP, SOURCE_QUICKSCOPE,
 ]
 
 ## The stat id a tracker keeps the lifetime total under.
@@ -27,7 +29,7 @@ var stat_id: StringName = &"points"
 ## Source id to points. A missing or non-positive source awards nothing.
 var sources: Dictionary = {
 	SOURCE_KILL: 100, SOURCE_HEADSHOT: 25, SOURCE_CRITICAL: 25, SOURCE_ASSIST: 50,
-	SOURCE_STREAK: 25, SOURCE_OBJECTIVE: 100, SOURCE_SURVIVAL: 10, SOURCE_PICKUP: 1,
+	SOURCE_STREAK: 25, SOURCE_OBJECTIVE: 100, SOURCE_SURVIVAL: 10, SOURCE_PICKUP: 1, SOURCE_QUICKSCOPE: 25,
 }
 ## A streak pays [code]streak[/code] points for each kill past the first, up to this many.
 var streak_cap: int = 10
@@ -111,14 +113,16 @@ func mirror(player: Variant, source: StringName, amount: int, total: int) -> voi
 	awarded.emit(player, source, amount, total)
 
 
-## Everything one kill is worth: the kill, headshot, critical, a streak step and the assists. Returns the killer's points.
+## Everything one kill is worth: the kill, headshot, critical, a quickscope, a streak step and the assists. Returns the killer's points.
 func award_kill(killer: Variant, victim: Variant, now_sec: float, headshot: bool = false,
-		critical: bool = false, streak: int = 1) -> int:
+		critical: bool = false, streak: int = 1, quickscope: bool = false) -> int:
 	var got := award(killer, SOURCE_KILL)
 	if headshot:
 		got += award(killer, SOURCE_HEADSHOT)
 	if critical:
 		got += award(killer, SOURCE_CRITICAL)
+	if quickscope:
+		got += award(killer, SOURCE_QUICKSCOPE)
 	if streak > 1:
 		got += award(killer, SOURCE_STREAK, float(mini(streak - 1, streak_cap)))
 	for helper in assisters(killer, victim, now_sec):
