@@ -28,6 +28,8 @@ func _ready() -> void:
 	_check(int(pts.totals.get(3, 0)) == 3, "the assister was paid")
 	_check(pts.assisters(2, 9, 2.0).is_empty(), "damage is forgotten after the kill")
 
+	pts.configure({"sources": {"kill": 10, "quickscope": 7}})
+	_check(pts.award_kill(8, 9, 2.0, false, false, 1, true) == 17 and pts.award_kill(8, 9, 2.0) == 10, "a quickscope kill pays the medal on top")
 	pts.configure({"sources": {"survival": 4}, "survival_interval_sec": 10.0})
 	_check(pts.survive(5, 25.0) == 8 and pts.survive(5, 5.0) == 4, "survival pays per interval and carries the remainder")
 	pts.mirror(7, &"kill", 10, 40)
