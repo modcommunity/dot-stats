@@ -48,3 +48,13 @@ static func report_shot(feed: DotStatsEventFeed, shot: Object) -> int:
 		if feed.report_wall_pass(shot.get("attacker"), String(shot.get("weapon_id")), StringName(str(pass_info.get("material", ""))), float(pass_info.get("cost", 0.0))):
 			filed += 1
 	return filed
+
+
+## Files a resolved dot-combat `DotShot` as one shot, and a hit when it `hit_anyone()` (accuracy: [DotStatsShots]). Call from `shot_resolved` for players' shots; returns how many counters were filed (0 to 2).
+static func report_shot_outcome(feed: DotStatsEventFeed, shot: Object) -> int:
+	if feed == null or shot == null:
+		return 0
+	var hit: bool = shot.has_method("hit_anyone") and bool(shot.call("hit_anyone"))
+	if not feed.report_shot_outcome(shot.get("attacker"), String(shot.get("weapon_id")), hit):
+		return 0
+	return 2 if hit else 1

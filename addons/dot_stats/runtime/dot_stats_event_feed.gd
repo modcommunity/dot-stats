@@ -103,6 +103,20 @@ func report_wall_pass(shooter: Variant, weapon: String, material: StringName, co
 	return ok
 
 
+## Files one resolved shot: a pull of the trigger, and a hit when it met someone (see [method DotStatsShots.declare]). Refused for an unnamed shooter or when the schema lacks [constant DotStatsShots.SHOTS].
+func report_shot_outcome(shooter: Variant, weapon: String, hit: bool) -> bool:
+	if tracker == null or shooter == null or not tracker.schema.has(DotStatsShots.SHOTS):
+		return false
+	var s := actor(shooter)
+	if s["key"] == &"":
+		return false
+	var dims := {"weapon": weapon if weapon != "" else "unknown"}
+	var ok := tracker.record(s["key"], DotStatsShots.SHOTS, 1.0, dims).ok
+	if hit:
+		ok = tracker.record(s["key"], DotStatsShots.HITS, 1.0, dims).ok and ok
+	return ok
+
+
 ## Connects a damage signal to [method report_penetration]. [param adapter] maps its arguments to {shooter, victim, weapon, kind, amount, killed}, or {} to skip the event.
 func bind_penetrations(source: Signal, adapter: Callable) -> void:
 	source.connect(func(a: Variant = null, b: Variant = null, c: Variant = null) -> void:
