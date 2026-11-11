@@ -88,6 +88,21 @@ func report_penetration(shooter: Variant, victim: Variant, weapon: String, kind:
 	return ok
 
 
+## Files one wall a round crossed: its [param cost] in power and one pass, by material and weapon-and-material (see [method DotStatsPenetration.declare_walls]). Refused for an unnamed material or a world shooter.
+func report_wall_pass(shooter: Variant, weapon: String, material: StringName, cost: float) -> bool:
+	if tracker == null or shooter == null or material == &"":
+		return false
+	var s := actor(shooter)
+	if s["key"] == &"":
+		return false
+	var wname := weapon if weapon != "" else "unknown"
+	var dims := {"material": String(material), "weapon_material": "%s.%s" % [wname, material]}
+	var ok := tracker.record(s["key"], DotStatsPenetration.PASSES, 1.0, dims).ok
+	if cost > 0.0:
+		ok = tracker.record(s["key"], DotStatsPenetration.COST, cost, dims).ok and ok
+	return ok
+
+
 ## Connects a damage signal to [method report_penetration]. [param adapter] maps its arguments to {shooter, victim, weapon, kind, amount, killed}, or {} to skip the event.
 func bind_penetrations(source: Signal, adapter: Callable) -> void:
 	source.connect(func(a: Variant = null, b: Variant = null, c: Variant = null) -> void:

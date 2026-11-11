@@ -37,3 +37,14 @@ static func report_hitzone(feed: DotStatsEventFeed, damage: Object) -> bool:
 	var side := StringName(str(context.get(SIDE_KEY, "")))
 	return feed.report_hit(damage.get("attacker"), damage.get("victim"), String(damage.get("weapon_id")), group,
 			float(damage.get("health_lost")), bool(damage.get("lethal")), side)
+
+
+## Files every wall a resolved dot-combat `DotShot` crossed (its `penetrations`: `material`, `cost`), whether or not a player was behind it. Call from `shot_resolved` for players' shots; returns how many were filed.
+static func report_shot(feed: DotStatsEventFeed, shot: Object) -> int:
+	if feed == null or shot == null:
+		return 0
+	var filed := 0
+	for pass_info: Dictionary in shot.get("penetrations"):
+		if feed.report_wall_pass(shot.get("attacker"), String(shot.get("weapon_id")), StringName(str(pass_info.get("material", ""))), float(pass_info.get("cost", 0.0))):
+			filed += 1
+	return filed
