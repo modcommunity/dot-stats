@@ -639,6 +639,15 @@ func _test_kills() -> void:
 	_check("walls: joint weapon.material axis", is_equal_approx(wv.get_cell(DotStatsPenetration.COST, "weapon_material:rifle.steel"), 2.5))
 	_check("walls: no shot, no material and a world shooter file nothing", DotStatsDamage.report_shot(feed, null) == 0 and not feed.report_wall_pass(1, "rifle", &"", 1.0) and not feed.report_wall_pass(null, "rifle", &"wood", 1.0))
 	_check("walls: the declared schema validates", DotStatsPenetration.declare_walls(DotStatsSchema.new()) == 2)
+	_check("shots: refused until declared", DotStatsDamage.report_shot_outcome(feed, fake_shot) == 0)
+	_check("shots: declared once", DotStatsShots.declare(tracker.schema) == 2 and DotStatsShots.declare(tracker.schema) == 0)
+	var missed := DotStatsDamage.report_shot_outcome(feed, fake_shot)
+	fake_shot.landed = true
+	_check("shots: a miss files a shot, a hit files both", missed == 1 and DotStatsDamage.report_shot_outcome(feed, fake_shot) == 2)
+	var sv: DotStatsValues = tracker.session_values(&"p1")
+	_check("shots: accuracy counters per weapon", sv.get_cell(DotStatsShots.SHOTS, "weapon:rifle") == 2.0 and sv.get_cell(DotStatsShots.HITS, "weapon:rifle") == 1.0)
+	_check("shots: no shot and a world shooter file nothing", DotStatsDamage.report_shot_outcome(feed, null) == 0 and not feed.report_shot_outcome(null, "rifle", true))
+	_check("shots: the declared schema validates", DotStatsShots.declare(DotStatsSchema.new()) == 2)
 	tracker.report_to_backbone = false
 	tracker.queue_free()
 	_done()
@@ -749,6 +758,11 @@ class DotStatsFakeShot:
 	var attacker: Variant
 	var weapon_id: String
 	var penetrations: Array[Dictionary] = []
+	var landed := false
+
+
+	func hit_anyone() -> bool:
+		return landed
 
 
 class DotStatsFakeDamage:
