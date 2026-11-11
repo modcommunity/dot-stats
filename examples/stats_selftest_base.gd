@@ -628,6 +628,17 @@ func _test_kills() -> void:
 	_check("penetration: cells per weapon and kind", pv.get_cell(DotStatsPenetration.HITS, "kind:wall") == 1.0 and pv.get_cell(DotStatsPenetration.DAMAGE, "weapon:rifle") == 60.0 and pv.get_cell(DotStatsPenetration.KILLS, "kind:wall") == 1.0)
 	_check("penetration: a ricochet hit files under its own kind", feed.report_penetration(1, 100, "rifle", DotStatsPenetration.KIND_RICOCHET, 12.0) and tracker.session_values(&"p1").get_cell(DotStatsPenetration.HITS, "kind:ricochet") == 1.0)
 	_check("penetration: self hits and empty kinds are refused", not feed.report_penetration(1, 1, "rifle", &"body", 5.0) and not feed.report_penetration(1, 100, "rifle", &""))
+	_check("walls: declared once", DotStatsPenetration.declare_walls(tracker.schema) == 2 and DotStatsPenetration.declare_walls(tracker.schema) == 0)
+	var fake_shot := DotStatsFakeShot.new()
+	fake_shot.attacker = 1
+	fake_shot.weapon_id = "rifle"
+	fake_shot.penetrations = [{"material": &"wood", "cost": 0.4}, {"material": &"steel", "cost": 2.5}, {"material": &"wood", "cost": 0.2}]
+	_check("walls: a shot files one pass per wall", DotStatsDamage.report_shot(feed, fake_shot) == 3)
+	var wv: DotStatsValues = tracker.session_values(&"p1")
+	_check("walls: cost and passes per material", is_equal_approx(wv.get_cell(DotStatsPenetration.COST, "material:wood"), 0.6) and wv.get_cell(DotStatsPenetration.PASSES, "material:wood") == 2.0 and wv.get_cell(DotStatsPenetration.PASSES, "material:steel") == 1.0)
+	_check("walls: joint weapon.material axis", is_equal_approx(wv.get_cell(DotStatsPenetration.COST, "weapon_material:rifle.steel"), 2.5))
+	_check("walls: no shot, no material and a world shooter file nothing", DotStatsDamage.report_shot(feed, null) == 0 and not feed.report_wall_pass(1, "rifle", &"", 1.0) and not feed.report_wall_pass(null, "rifle", &"wood", 1.0))
+	_check("walls: the declared schema validates", DotStatsPenetration.declare_walls(DotStatsSchema.new()) == 2)
 	tracker.report_to_backbone = false
 	tracker.queue_free()
 	_done()
@@ -733,6 +744,13 @@ func _is_int(v: Variant, minimum: int) -> bool:
 
 
 ## Stand-in for a dot-combat DotDamage (dot-stats names no combat class).
+class DotStatsFakeShot:
+	extends RefCounted
+	var attacker: Variant
+	var weapon_id: String
+	var penetrations: Array[Dictionary] = []
+
+
 class DotStatsFakeDamage:
 	extends RefCounted
 	var attacker: Variant

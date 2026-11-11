@@ -10,6 +10,10 @@ const DAMAGE := &"penetration_damage"
 
 const KIND_WALL := &"wall"
 const KIND_BODY := &"body"
+## Power spent crossing walls, and walls crossed, per surface material and per weapon-and-material (the site's Penetration cost panel).
+const COST := &"penetration_cost"
+const PASSES := &"penetration_passes"
+
 ## A hit by a round that bounced off a wall first (`sv_ricochet`).
 const KIND_RICOCHET := &"ricochet"
 
@@ -26,6 +30,24 @@ static func declare(schema: DotStatsSchema) -> int:
 			continue
 		var def := schema.define(spec[0], DotStatsDef.Kind.COUNTER, spec[1])
 		def.breakdowns = PackedStringArray(["weapon", "kind"])
+		def.category = "penetration"
+		def.publish = true
+		added += 1
+	return added
+
+
+## Declares [constant COST] and [constant PASSES] on [param schema] unless present; returns how many were added.
+## Their axes are [code]material[/code] and the joint [code]weapon_material[/code] ("weapon.material").
+static func declare_walls(schema: DotStatsSchema) -> int:
+	var added := 0
+	for spec in [
+		[COST, "Power spent crossing walls"],
+		[PASSES, "Walls crossed"],
+	]:
+		if schema.has(spec[0]):
+			continue
+		var def := schema.define(spec[0], DotStatsDef.Kind.COUNTER, spec[1])
+		def.breakdowns = PackedStringArray(["material", "weapon_material"])
 		def.category = "penetration"
 		def.publish = true
 		added += 1
