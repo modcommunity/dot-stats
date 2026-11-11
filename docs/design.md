@@ -82,3 +82,5 @@ Seam: neither dot-game nor dot-bot calls the tracker yet. Whoever wires it passe
 ## Points
 
 `DotStatsPoints` is one points score for any game: the game reports events (`award_kill`, `award`, `note_damage`, `survive`), the source table (kill, headshot, assist, streak, objective, survival, pickup, medal, quickscope) holds the amounts and loads from JSON, and `record_fn` files each award with the tracker under the `declare`d stat. A client copy is filled with `mirror`. `examples/points_selftest.tscn` is the suite.
+
+`DotStatsEventFeed.bind_shots(combat.shot_resolved)` is the one line that gives a game the Accuracy and Headshot columns: declare `DotStatsShots.declare(schema)` before the tracker starts, then bind the signal once the feed exists. Each resolved shot files one `shots` and, when it hit someone, one `hits` per weapon; shooters `key_of` does not name (bots, NPCs) file nothing.
