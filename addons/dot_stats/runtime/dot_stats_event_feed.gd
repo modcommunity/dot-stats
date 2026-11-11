@@ -117,6 +117,17 @@ func report_shot_outcome(shooter: Variant, weapon: String, hit: bool) -> bool:
 	return ok
 
 
+## Connects a resolved-shot signal (dot-combat's `shot_resolved(shot)`) to [method report_shot_outcome]: the one line that gives any game accuracy.
+## The shot is read by duck type (`attacker`, `weapon_id`, `hit_anyone()`), so dot-stats names no dot-combat class. Declare [method DotStatsShots.declare] in the schema before the tracker starts; returns false (and connects nothing) when it is missing.
+## Players only: a shooter [member key_of] gives no key (a bot, an NPC, the world) files nothing.
+func bind_shots(source: Signal) -> bool:
+	if tracker == null or not tracker.schema.has(DotStatsShots.SHOTS):
+		return false
+	source.connect(func(shot: Object = null) -> void:
+		var _n := DotStatsDamage.report_shot_outcome(self, shot))
+	return true
+
+
 ## Connects a damage signal to [method report_penetration]. [param adapter] maps its arguments to {shooter, victim, weapon, kind, amount, killed}, or {} to skip the event.
 func bind_penetrations(source: Signal, adapter: Callable) -> void:
 	source.connect(func(a: Variant = null, b: Variant = null, c: Variant = null) -> void:

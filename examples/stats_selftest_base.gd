@@ -647,6 +647,18 @@ func _test_kills() -> void:
 	var sv: DotStatsValues = tracker.session_values(&"p1")
 	_check("shots: accuracy counters per weapon", sv.get_cell(DotStatsShots.SHOTS, "weapon:rifle") == 2.0 and sv.get_cell(DotStatsShots.HITS, "weapon:rifle") == 1.0)
 	_check("shots: no shot and a world shooter file nothing", DotStatsDamage.report_shot_outcome(feed, null) == 0 and not feed.report_shot_outcome(null, "rifle", true))
+	var shot_sig := DotStatsShotSource.new()
+	var bare := DotStatsTracker.new()
+	bare.schema = DotStatsSchema.new()
+	_check("shots: bind_shots connects once declared", feed.bind_shots(shot_sig.resolved))
+	fake_shot.landed = false
+	shot_sig.resolved.emit(fake_shot)
+	fake_shot.landed = true
+	shot_sig.resolved.emit(fake_shot)
+	var bv: DotStatsValues = tracker.session_values(&"p1")
+	_check("shots: a bound signal files shots and hits", bv.get_cell(DotStatsShots.SHOTS, "weapon:rifle") == 4.0 and bv.get_cell(DotStatsShots.HITS, "weapon:rifle") == 2.0)
+	_check("shots: bind_shots refuses an undeclared schema", not DotStatsEventFeed.new(bare).bind_shots(shot_sig.resolved))
+	bare.free()
 	_check("shots: the declared schema validates", DotStatsShots.declare(DotStatsSchema.new()) == 2)
 	tracker.report_to_backbone = false
 	tracker.queue_free()
@@ -763,6 +775,12 @@ class DotStatsFakeShot:
 
 	func hit_anyone() -> bool:
 		return landed
+
+
+## Stand-in for dot-combat's `shot_resolved` signal.
+class DotStatsShotSource:
+	extends RefCounted
+	signal resolved(shot: Object)
 
 
 class DotStatsFakeDamage:
