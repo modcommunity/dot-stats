@@ -56,7 +56,7 @@ signal reported(result: DotResult)
 @export var app_id: int = 0
 
 ## Seconds between flushes. 0 leaves flushing to the caller.
-@export_range(0.0, 600.0, 1.0) var report_interval: float = 30.0
+@export_range(0.0, 600.0, 1.0, "or_greater") var report_interval: float = 30.0
 
 ## The player's client. Any object with `post_app(path, body)` and
 ## `get_app(path, query)` — dot-auth's [code]DotAuthClient[/code], which is

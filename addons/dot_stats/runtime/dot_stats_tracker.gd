@@ -73,7 +73,7 @@ signal stored(result: DotResult)
 @export var report_to_backbone: bool = false
 
 ## Seconds between flushes. 0 leaves flushing to the caller.
-@export_range(0.0, 600.0, 1.0) var report_interval: float = 30.0
+@export_range(0.0, 600.0, 1.0, "or_greater") var report_interval: float = 30.0
 
 ## Declare the schema to the backbone when reporting starts.
 @export var define_on_start: bool = true
@@ -84,7 +84,8 @@ signal stored(result: DotResult)
 @export var log_events: bool = false
 
 ## Oldest rows are dropped past this, so a consumer that never drains cannot grow memory.
-@export_range(100, 1000000, 100) var max_events: int = 50000
+## 0 keeps every row (memory is then the consumer's to drain).
+@export_range(0, 1000000, 100, "or_greater") var max_events: int = 50000
 
 ## Put the linked TMC user id on sessions that were begun with one. Off, sessions stay opaque.
 @export var link_tmc_user: bool = false
@@ -431,7 +432,7 @@ func _log_event(row: Dictionary, player_id: StringName, stat_id: StringName, val
 		"session": row["session_id"], "player": String(player_id), "stat": String(stat_id),
 		"dims": clean, "is_bot": row["is_bot"], "value": value, "t": Time.get_unix_time_from_system(),
 	})
-	if _events.size() > max_events:
+	if max_events > 0 and _events.size() > max_events:
 		_events = _events.slice(_events.size() - max_events)
 
 
