@@ -1,30 +1,17 @@
-This is the **statistics** asset for TMC's **Dot** collection. A game says once what it counts, and this files those numbers to the TMC backbone without a server ever handing over an account id.
+# dot-stats
 
-This collection of assets provides modular building blocks for creating games and applications within the TMC ecosystem, ensuring consistency and interoperability across all `dot-*` assets. This includes core functionality, networking, authentication, cloud integration, and more.
+Per-player statistics a game declares once and reports in batches. Counters, gauges, bests and lowests are merged by a rule the game states, and filed to the TMC back end without a server ever handing over an account id.
 
-**These assets are COMPLETELY OPEN SOURCE**. You are free to use, modify, and distribute them under the terms of the MIT license. The only thing not open source is the back-end web infrastructure. So if you opt into using your own authentication backend instead of integrating with TMC, you will need to build and integrate your own back-end infrastructure.
+State the merge rule once per stat (add, replace or keep the better) and every party applies it the same way: the server counting, the reporter batching and the site storing.
 
-## From Maintainer & WARNING
-This asset, along with all the others, was built initially with **Claude Code** and will continue to be maintained and extended using it. This is because I (`gamemann`) cannot build the entire TMC platform alone (I wish I could lol).
+## Install
 
-**Please treat this as partially tested.** Every asset has its own headless test suite and those suites pass, but very little of this has been in front of real players yet. Expect rough edges, and please report anything you run into.
+1. Get [Godot 4.7](https://godotengine.org/download).
+2. Either use [dot-bootstrap](https://github.com/modcommunity/dot-bootstrap), which clones every project and links the addons, or copy `addons/dot_stats/` and [dot-core](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into your project and enable dot-stats in *Project > Project Settings > Plugins*.
 
-I intend on reviewing code, testing, and editing documentation regularly. If you're interested in helping out, please let me know!
+dot-core is the only dependency. [dot-auth](https://github.com/modcommunity/dot-auth) is optional and supplies the two clients (`DotBackboneClient` for a server, `DotAuthClient` for a player).
 
-## Per-Player Statistics
-**Per-player statistics a game declares once and reports in batches.** Counters, gauges, bests and lowests, merged by a rule the game states, filed to the TMC backbone under an app or a server integration.
-
-## Why
-
-A leaderboard is one number per player, ordered. Most of what a game counts is not that: kills, deaths, jumps, metres, seconds played, a top speed, a level. Those are many numbers per player, accumulated, and the only thing anybody has to agree on is how a new reading meets an old one: add it, replace it, or keep the better. State that once per stat and every party can apply it: the server counting, the reporter batching, the site storing.
-
-## Installing
-
-Copy `addons/dot_stats/` and [`dot-core`](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into your project and enable dot-stats in *Project → Project Settings → Plugins*.
-
-[dot-auth](https://github.com/modcommunity/dot-auth) supplies both clients, `DotBackboneClient` for a server's reporting and `DotAuthClient` for a player's own, and is optional; neither is named anywhere in the source.
-
-## Five minutes
+## Use
 
 ```gdscript
 var schema := DotStatsSchema.new()
@@ -38,29 +25,29 @@ tracker.report_to_backbone = true
 tracker.reporter.client = backbone      # dot-auth's DotBackboneClient
 add_child(tracker)
 
-tracker.begin(player_key, display_name) # the SCOPED key, never the account id
+tracker.begin(player_key, display_name) # the scoped key, never the account id
 tracker.record(player_key, &"kills")
 tracker.record(player_key, &"top_speed", 41.2)
 tracker.end(player_key)                 # reports the last delta, forgets them
 ```
 
-Every 30 seconds, and once more on the way down, the tracker sends each player's delta since the last report: `{"kills": 3, "top_speed": 41.2}`. The site merges each by its kind.
+Every `report_interval` seconds (default 30) and once more on shutdown, the tracker sends each player's delta since the last report, such as `{"kills": 3, "top_speed": 41.2}`. The site merges each by its kind.
 
-## Keeping lifetime totals on the server
+## Lifetime totals on the server
 
 ```gdscript
 var store := DotStatsStoreSql.new(driver)   # any dot-sql driver; or DotStatsStoreMemory
 await store.open()                          # creates or migrates its table
-tracker.store = store                       # before add_child, so the timer runs for it
+tracker.store = store                       # before add_child
 ```
 
-With a store, every delta the tracker reports is also merged into the store at the same moment, by the same rule, so a server with no backbone still keeps every player's totals and one with both keeps both. The store answers `values_for(player)`, `top(stat, limit, offset)` ordered by the stat's kind (a `LOWEST` ascending, the rest descending, a tie sharing its rank), `rank_of(stat, player)` and `remove_player(player)`.
+Each reported delta is also merged into the store by the same rule, so a server with no back end still keeps every player's totals. The store answers `values_for(player)`, `top(stat, limit, offset)` (a `LOWEST` ascending, the rest descending, ties sharing a rank), `rank_of(stat, player)` and `remove_player(player)`.
 
-`DotStatsStoreSql` speaks SQLite, Postgres and MySQL/MariaDB through [dot-sql](https://github.com/modcommunity/dot-sql), reached duck-typed so dot-stats parses without it. The new total is computed by `DotStatsDef.merge`, the same function everything else uses, and written guarded by a revision, so two servers sharing the table add up rather than overwrite. A write that fails keeps what did not land for the next flush, and never adds a counter twice.
+`DotStatsStoreSql` speaks SQLite, PostgreSQL and MySQL/MariaDB through [dot-sql](https://github.com/modcommunity/dot-sql), without needing it to parse. Writes are guarded by a revision, so two servers sharing a table add up instead of overwriting. A failed write is kept for the next flush and never counts a counter twice.
 
-## The other surface
+## Player-reported stats
 
-A player's own client reports its own figures, with the player's token and no integration credential anywhere near it:
+A player's own client can report its own figures with the player's token and no integration credential:
 
 ```gdscript
 var mine := DotStatsClient.new()
@@ -72,30 +59,25 @@ mine.record(&"launches")
 var held := await mine.fetch_mine()
 ```
 
-Both land on the same rows, because a client files under the member's key for the app's own scope. Keep anything competitive on the server; this is for a diary.
+Both land on the same rows. Keep anything competitive on the server; this is for a diary.
 
-## The stat catalog file
+## Stat catalogue file
 
-A game's published stats can be written as the site's `dot-stat-defs` JSON, from the schema the game really builds, so the site owner imports it from the dashboard instead of retyping it. Run it from the game project, with the method that returns the game's `DotStatsSchema`:
+`tools/export_site_defs.gd` writes a game's published stats as the site's `dot-stat-defs` JSON, from the schema the game really builds, so the site owner imports it instead of retyping it. Run it from the game project with Godot headless as a script, passing `--source` (a script path), `--method` (the function returning the `DotStatsSchema`) and `--out`.
 
-```bash
-godot --headless --path . --script <path to dot-stats>/tools/export_site_defs.gd -- \
-    --source res://game/my_progress.gd --method schema --out deployment/stat-defs.json
-```
+| Option | Does |
+| --- | --- |
+| `--check` | Writes nothing and exits 1 when the file on disk is stale. |
+| `--game <id>` | Pins the site app id. Left out by default so one file imports anywhere. |
 
-`--check` writes nothing and exits 1 when the file on disk is stale, so a suite can hold code and file together. `--game <id>` pins the site app id, which is left out by default so one file imports into any environment. The file is `DotStatsSchema.to_site_defs()`: a stat with no format has no `format` key (so an import keeps the site's), `per_minute` is written as `ratio` with the scale times 60, and `difference` as `diff`; a scaled `difference` is skipped with a warning, because the site's diff ignores scale.
+The file is `DotStatsSchema.to_site_defs()`. A scaled `difference` is skipped with a warning, because the site's diff ignores scale.
 
-## Validating
+## Testing
 
-```bash
-godot --headless --path . res://examples/stats_selftest.tscn
+Import the project once, then run `examples/stats_selftest.tscn` headless with Godot. `examples/stats_sql_live.tscn` runs the SQL store against real databases through `../dot-sql/tools/test_live.sh`. More in [docs/](docs/README.md).
 
-# the SQL store against real SQLite, Postgres and MariaDB (dot-sql linked in addons/)
-../dot-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn
-```
+## Status and licence
 
-See [docs/](docs/README.md) for the design, the two surfaces, and what is deliberately left out.
+Part of the TMC **dot-\*** family of Godot addons. Written with Claude Code and maintained by `gamemann`. Every addon has headless tests, but little of this has been played by real users yet, so expect rough edges and please [open an issue](https://github.com/modcommunity/dot-stats/issues) when you hit one.
 
-## Licence
-
-MIT. See [LICENSE](LICENSE).
+MIT licence, see [LICENSE](LICENSE). The only closed part of the TMC platform is the web back end; you can use your own instead of TMC's.
