@@ -628,6 +628,14 @@ func _test_kills() -> void:
 	_check("penetration: cells per weapon and kind", pv.get_cell(DotStatsPenetration.HITS, "kind:wall") == 1.0 and pv.get_cell(DotStatsPenetration.DAMAGE, "weapon:rifle") == 60.0 and pv.get_cell(DotStatsPenetration.KILLS, "kind:wall") == 1.0)
 	_check("penetration: a ricochet hit files under its own kind", feed.report_penetration(1, 100, "rifle", DotStatsPenetration.KIND_RICOCHET, 12.0) and tracker.session_values(&"p1").get_cell(DotStatsPenetration.HITS, "kind:ricochet") == 1.0)
 	_check("penetration: self hits and empty kinds are refused", not feed.report_penetration(1, 1, "rifle", &"body", 5.0) and not feed.report_penetration(1, 100, "rifle", &""))
+	_kills_walls_and_shots(tracker, feed)
+	tracker.report_to_backbone = false
+	tracker.queue_free()
+	_done()
+
+
+## Wall passes per material and shot accuracy, filed through the feed once their stats are declared.
+func _kills_walls_and_shots(tracker: DotStatsTracker, feed: DotStatsEventFeed) -> void:
 	_check("walls: declared once", DotStatsPenetration.declare_walls(tracker.schema) == 2 and DotStatsPenetration.declare_walls(tracker.schema) == 0)
 	var fake_shot := DotStatsFakeShot.new()
 	fake_shot.attacker = 1
@@ -660,9 +668,6 @@ func _test_kills() -> void:
 	_check("shots: bind_shots refuses an undeclared schema", not DotStatsEventFeed.new(bare).bind_shots(shot_sig.resolved))
 	bare.free()
 	_check("shots: the declared schema validates", DotStatsShots.declare(DotStatsSchema.new()) == 2)
-	tracker.report_to_backbone = false
-	tracker.queue_free()
-	_done()
 
 
 func _validate_submit(body: Dictionary, fx: Dictionary) -> Array:
