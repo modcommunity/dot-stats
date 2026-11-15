@@ -1,12 +1,8 @@
 extends SceneTree
 
-## Writes a game's published stats as the site's `dot-stat-defs` JSON, from the schema the game
-## really builds. Run inside the game project:
-##   godot --headless --path . --script ../dot-stats/tools/export_site_defs.gd -- \
-##     --source res://game/x_progress.gd --method schema --out deployment/stat-defs.json [--check] [--game 12]
-## A stat with an empty format has no "format" key; per_minute is written as ratio with scale x60 and difference as diff
-## (a scaled difference is skipped with a warning: the site's diff ignores scale).
-## --check writes nothing and exits 1 if the file on disk differs, so a suite can hold the two together.
+## Writes a game's published stats as the site's `dot-stat-defs` JSON, from the schema the game really builds. Run inside the game project: godot --headless --path . --script ../dot-stats/tools/export_site_defs.gd --
+##   --source res://game/x_progress.gd --method schema --out deployment/stat-defs.json [--check] [--game 12]. An empty format writes no "format" key; per_minute is written as ratio with scale x60 and difference as diff
+## (a scaled difference is skipped with a warning: the site's diff ignores scale). --check writes nothing and exits 1 if the file on disk differs, so a suite can hold the two together.
 
 func _init() -> void:
 	var args := _parse(OS.get_cmdline_user_args())
