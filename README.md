@@ -5,9 +5,9 @@ State the merge rule once per stat (add, replace or keep the better) and every p
 ## Install
 
 1. Get [Godot 4.7](https://godotengine.org/download).
-2. Either use [dot-bootstrap](https://github.com/modcommunity/dot-bootstrap), which clones every project and links the addons, or copy `addons/dot_stats/` and [dot-core](https://github.com/modcommunity/dot-core)'s `addons/dot_core/` into your project and enable dot-stats in *Project > Project Settings > Plugins*.
+2. Either use [dot-bootstrap](https://github.com/gamespice-platform/bootstrap), which clones every project and links the addons, or copy `addons/dot_stats/` and [dot-core](https://github.com/gamespice-platform/core)'s `addons/dot_core/` into your project and enable dot-stats in *Project > Project Settings > Plugins*.
 
-dot-core is the only dependency. [dot-auth](https://github.com/modcommunity/dot-auth) is optional and supplies the two clients (`DotBackboneClient` for a server, `DotAuthClient` for a player).
+dot-core is the only dependency. [dot-auth](https://github.com/gamespice-platform/auth) is optional and supplies the two clients (`DotBackboneClient` for a server, `DotAuthClient` for a player).
 
 ## Use
 
@@ -41,7 +41,7 @@ tracker.store = store                       # before add_child
 
 Each reported delta is also merged into the store by the same rule, so a server with no back end still keeps every player's totals. The store answers `values_for(player)`, `top(stat, limit, offset)` (a `LOWEST` ascending, the rest descending, ties sharing a rank), `rank_of(stat, player)` and `remove_player(player)`.
 
-`DotStatsStoreSql` speaks SQLite, PostgreSQL and MySQL/MariaDB through [dot-sql](https://github.com/modcommunity/dot-sql), without needing it to parse. Writes are guarded by a revision, so two servers sharing a table add up instead of overwriting. A failed write is kept for the next flush and never counts a counter twice.
+`DotStatsStoreSql` speaks SQLite, PostgreSQL and MySQL/MariaDB through [dot-sql](https://github.com/gamespice-platform/sql), without needing it to parse. Writes are guarded by a revision, so two servers sharing a table add up instead of overwriting. A failed write is kept for the next flush and never counts a counter twice.
 
 ## Player-reported stats
 
@@ -76,6 +76,6 @@ Import the project once, then run `examples/stats_selftest.tscn` headless with G
 
 ## Status and licence
 
-Part of the TMC **dot-\*** family of Godot addons. Written with Claude Code and maintained by `gamemann`. Every addon has headless tests, but little of this has been played by real users yet, so expect rough edges and please [open an issue](https://github.com/modcommunity/dot-stats/issues) when you hit one.
+Part of the TMC **dot-\*** family of Godot addons. Written with Claude Code and maintained by `gamemann`. Every addon has headless tests, but little of this has been played by real users yet, so expect rough edges and please [open an issue](https://github.com/gamespice-platform/stats/issues) when you hit one.
 
 MIT licence, see [LICENSE](LICENSE). The only closed part of the TMC platform is the web back end; you can use your own instead of TMC's.
