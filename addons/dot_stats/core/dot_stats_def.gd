@@ -78,7 +78,7 @@ const FORMATS := ["", "number", "percent", "duration", "distance", "ratio"]
 const COLUMNS := ["default", "optional", "hidden"]
 const SOURCES := ["server", "client"]
 const BETTER := ["", "higher", "lower"]
-## Matches the site (DOT_BREAKDOWNS_MAX); a cell is one "axis:value" dim string, so the count is not a storage limit.
+## Matches the site (GS_BREAKDOWNS_MAX); a cell is one "axis:value" dim string, so the count is not a storage limit.
 const MAX_BREAKDOWNS := 4
 
 @export var value_type: ValueType = ValueType.NUMBER

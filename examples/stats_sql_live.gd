@@ -5,7 +5,7 @@ extends Node
 ## The self-test proves which statements the store sends; this proves a database accepts
 ## them, ranks the way the kind says, and that two writers folding into one row at once add
 ## up — in all three dialects. Run by dot-sql's runner, which starts a gateway per dialect
-## and sets DOT_SQL_URL, DOT_SQL_DIALECT and DOT_SQL_TOKEN_FILE:
+## and sets GS_SQL_URL, GS_SQL_DIALECT and GS_SQL_TOKEN_FILE:
 ##
 ## [codeblock]
 ## ../dot-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn
@@ -30,15 +30,15 @@ var _landed := 0
 func _ready() -> void:
 	DotLog.set_level(DotLog.Level.ERROR)
 
-	var dialect := DotSqlDialect.from_name(OS.get_environment("DOT_SQL_DIALECT"))
+	var dialect := DotSqlDialect.from_name((OS.get_environment("GS_SQL_DIALECT") if OS.has_environment("GS_SQL_DIALECT") else OS.get_environment("DOT_SQL_DIALECT")))
 	var made := DotSql.from_config({
 		"driver": "gateway",
-		"url": OS.get_environment("DOT_SQL_URL"),
+		"url": (OS.get_environment("GS_SQL_URL") if OS.has_environment("GS_SQL_URL") else OS.get_environment("DOT_SQL_URL")),
 		"dialect": DotSqlDialect.name_of(dialect),
-		"token": FileAccess.get_file_as_string(OS.get_environment("DOT_SQL_TOKEN_FILE")).strip_edges(),
+		"token": FileAccess.get_file_as_string((OS.get_environment("GS_SQL_TOKEN_FILE") if OS.has_environment("GS_SQL_TOKEN_FILE") else OS.get_environment("DOT_SQL_TOKEN_FILE"))).strip_edges(),
 	}, self)
 	if not made.ok or made.value == null:
-		print("set DOT_SQL_URL, DOT_SQL_DIALECT and DOT_SQL_TOKEN_FILE; see dot-sql/tools/test_live.sh")
+		print("set GS_SQL_URL, GS_SQL_DIALECT and GS_SQL_TOKEN_FILE; see dot-sql/tools/test_live.sh")
 		get_tree().quit(2)
 		return
 
