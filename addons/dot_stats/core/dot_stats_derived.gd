@@ -27,11 +27,13 @@ func op_name() -> String:
 ## The value over [param values], or NAN when an input is missing or the divisor is zero.
 ##
 ## [param cell] is a breakdown cell key such as `weapon:rifle`, or "" for the total.
-func compute(values: DotStatsValues, cell: String = "") -> float:
+## [param values] is a [DotStatsValues], typed by its base: it names the schema, which names this
+## class, and a script loop stays in memory for good (Godot 4.7).
+func compute(values: RefCounted, cell: String = "") -> float:
 	if not values.has_cell(num, cell) or not values.has_cell(den, cell):
 		return NAN
-	var a := values.get_cell(num, cell)
-	var b := values.get_cell(den, cell)
+	var a: float = values.get_cell(num, cell)
+	var b: float = values.get_cell(den, cell)
 	match op:
 		Op.RATIO:
 			return NAN if b == 0.0 else a / b * scale
