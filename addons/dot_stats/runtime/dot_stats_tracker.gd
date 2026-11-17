@@ -189,6 +189,7 @@ func _exit_tree() -> void:
 		# Awaited, like the reporter's: a server that stops between flushes does not lose
 		# the last interval of everybody's lifetime totals either.
 		await flush_store()
+		store.finish()
 	if report_to_backbone and (reporter.queued() > 0 or reporter.pending_kills() > 0):
 		# A final, awaited flush so a server that stops between reports does not
 		# lose the last interval of every player's play.

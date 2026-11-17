@@ -23,3 +23,7 @@ Every store folds with `DotStatsValues.merge_from` / `DotStatsDef.merge`. The ob
 ## dot-sql, duck-typed
 
 The store reaches dot-sql **duck-typed**, so the addon names no dot-sql class and parses without it; dot-sql is linked into `addons/` (gitignored) only for the suites. The table is `DotStatsSqlSchema`'s spec (`SqlSchema`, because `DotStatsSchema` is already the set of definitions). A row is keyed (player, stat, dim): dim `""` is the total and `axis:value` a breakdown cell; migration step 2 rebuilds a v1 table with it.
+
+## The file store writes once per flush
+
+`DotStatsStoreFile` marks itself dirty in a merge; the next frame takes one snapshot and a worker thread serialises and writes it (inline where `DotPlatform.has_threads()` is false). A tracker flush that merges 24 players is one write, not 24 in one frame (the 130 ms spike every 30 s in the owner's profile). The tracker calls `store.finish()` on exit; any other owner must too, since a RefCounted cannot flush itself while freed. `write_behind = false` restores write-through. `writes` counts completed writes.

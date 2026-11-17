@@ -120,3 +120,8 @@ func describe() -> Dictionary:
 		"implementation": String(script.get_global_name()) if script != null else "?",
 		"schema": schema.size() if schema != null else 0,
 	}
+
+
+## Writes anything a store holds back and waits for it. A no-op for a store that writes through; the tracker calls it when it exits.
+func finish() -> void:
+	pass

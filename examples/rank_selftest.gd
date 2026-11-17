@@ -127,15 +127,35 @@ func _file_store() -> void:
 	a.schema = schema
 	await a.merge(&"p1", {"kills": 10.0, "best_streak": 3.0}, null, "P1")
 	await a.merge(&"p1", {"kills": 5.0, "best_streak": 2.0}, null, "P1")
+	_check(a.writes == 0, "file store writes nothing inside a merge")
+	a.finish()
+	_check(a.writes == 1, "two merges are one write")
 	var b := DotStatsStoreFile.new(path)
 	b.schema = schema
 	var res: DotResult = await b.values_for(&"p1")
 	_check(res.ok and res.value.get_value(&"kills") == 15.0 and res.value.get_value(&"best_streak") == 3.0, "file store keeps totals across instances")
 	await b.merge(&"p1", {"kills": 1.0}, null, "P1")
+	b.finish()
 	var c := DotStatsStoreFile.new(path)
 	c.schema = schema
 	res = await c.values_for(&"p1")
-	_check(res.ok and res.value.get_value(&"kills") == 16.0, "file store writes through on merge")
+	_check(res.ok and res.value.get_value(&"kills") == 16.0, "file store keeps a merge once finished")
+	var w := DotStatsStoreFile.new(path)
+	w.schema = schema
+	w.write_behind = false
+	await w.merge(&"p1", {"kills": 1.0}, null, "P1")
+	await w.merge(&"p1", {"kills": 1.0}, null, "P1")
+	_check(w.writes == 2, "write_behind off writes through on every merge")
+	var tick := DotStatsStoreFile.new(path)
+	tick.schema = schema
+	await tick.merge(&"p1", {"kills": 1.0}, null, "P1")
+	await tick.merge(&"p2", {"kills": 1.0}, null, "P2")
+	for _i in 200:
+		await get_tree().process_frame
+		if tick.writes > 0:
+			break
+	tick.finish()
+	_check(tick.writes == 1, "a frame later the dirty file is written once, off the merge")
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string("{not json")
 	f.close()
