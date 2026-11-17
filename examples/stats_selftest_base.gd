@@ -504,8 +504,8 @@ func _test_site_contract() -> void:
 	_section("site contract: stats/v2/submit")
 	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://examples/fixtures/dot_submit_v2.schema.json"))
 	var schema: DotStatsSchema = DotStatsSchema.from_dictionary({"stats": [
-		{"id": "arena.kills", "kind": "COUNTER", "publish": true, "breakdowns": ["weapon", "map"]},
-		{"id": "arena.longest_kill", "kind": "BEST", "publish": true},
+		{"id": "fc.kills", "kind": "COUNTER", "publish": true, "breakdowns": ["weapon", "map"]},
+		{"id": "fc.longest_kill", "kind": "BEST", "publish": true},
 	]}).value
 	var backbone := FakeBackbone.new()
 	var tracker := DotStatsTracker.new()
@@ -519,9 +519,9 @@ func _test_site_contract() -> void:
 	add_child(tracker)
 	tracker.begin(&"k1", "Ada", {"session_id": "game-session-1", "map": "dm_canyon", "tmc_user": "u1"})
 	tracker.begin(&"bot_1", "Bot", {"is_bot": true, "tmc_user": "u2"})
-	tracker.record(&"k1", &"arena.kills", 3.0, {"weapon": &"zee.rifle", "map": &"dm_canyon"})
-	tracker.record(&"k1", &"arena.longest_kill", 41.2)
-	tracker.record(&"bot_1", &"arena.kills", 1.0)
+	tracker.record(&"k1", &"fc.kills", 3.0, {"weapon": &"zee.rifle", "map": &"dm_canyon"})
+	tracker.record(&"k1", &"fc.longest_kill", 41.2)
+	tracker.record(&"bot_1", &"fc.kills", 1.0)
 	tracker.end(&"bot_1")
 	backbone.fail = true
 	await tracker.flush()
@@ -542,7 +542,7 @@ func _test_site_contract() -> void:
 		else:
 			bot = p
 	_check("the human carries user, the bot does not", human.get("user", "") == "u1" and bot["bot"] == true and not bot.has("user"))
-	_check("the cells are by axis, value, stat", float(human["by"]["weapon"]["zee.rifle"]["arena.kills"]) == 3.0 and float(human["by"]["map"]["dm_canyon"]["arena.kills"]) == 3.0)
+	_check("the cells are by axis, value, stat", float(human["by"]["weapon"]["zee.rifle"]["fc.kills"]) == 3.0 and float(human["by"]["map"]["dm_canyon"]["fc.kills"]) == 3.0)
 	_check("a non-UUID game session id maps to one stable UUID", human["session"] == DotStatsReporter.wire_session_id("game-session-1") and human["session"] != "game-session-1")
 
 	# The validator itself must refuse what the site refuses, or the check above proves nothing.
@@ -565,7 +565,7 @@ func _test_kills() -> void:
 	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://examples/fixtures/dot_submit_v2.schema.json"))
 	var backbone := FakeBackbone.new()
 	var tracker := DotStatsTracker.new()
-	tracker.schema = DotStatsSchema.from_dictionary({"stats": [{"id": "arena.kills", "kind": "COUNTER", "publish": true}]}).value
+	tracker.schema = DotStatsSchema.from_dictionary({"stats": [{"id": "fc.kills", "kind": "COUNTER", "publish": true}]}).value
 	tracker.define_on_start = false
 	tracker.report_interval = 0.0
 	tracker.reporter.client = backbone
