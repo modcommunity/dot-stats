@@ -1,4 +1,4 @@
-[![dot-stats - GameSpice addon](docs/banner.png)](https://moddingcommunity.com/a/220-dot-stats)
+[![Stats - GameSpice addon](docs/banner.png)](https://moddingcommunity.com/a/220-dot-stats)
 
 Per-player statistics a game declares once and reports in batches. Counters, gauges, bests and lowests are merged by a rule the game states, and filed to the TMC back end without a server ever handing over an account id.
 
