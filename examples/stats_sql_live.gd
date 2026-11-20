@@ -1,10 +1,10 @@
 extends Node
 
-## The SQL store against a real database, through dot-sql's gateway.
+## The SQL store against a real database, through GameSpice SQL's gateway.
 ##
 ## The self-test proves which statements the store sends; this proves a database accepts
 ## them, ranks the way the kind says, and that two writers folding into one row at once add
-## up — in all three dialects. Run by dot-sql's runner, which starts a gateway per dialect
+## up — in all three dialects. Run by GameSpice SQL's runner, which starts a gateway per dialect
 ## and sets GS_SQL_URL, GS_SQL_DIALECT and GS_SQL_TOKEN_FILE:
 ##
 ## [codeblock]

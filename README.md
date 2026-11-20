@@ -7,9 +7,9 @@ State the merge rule once per stat (add, replace or keep the better) and every p
 ## Install
 
 1. Get [Godot 4.7](https://godotengine.org/download).
-2. Either use [dot-bootstrap](https://github.com/gamespice-platform/bootstrap), which clones every project and links the addons, or copy `addons/dot_stats/` and [dot-core](https://github.com/gamespice-platform/core)'s `addons/dot_core/` into your project and enable dot-stats in *Project > Project Settings > Plugins*.
+2. Either use [GameSpice Bootstrap](https://github.com/gamespice-platform/bootstrap), which clones every project and links the addons, or copy `addons/dot_stats/` and [GameSpice Core](https://github.com/gamespice-platform/core)'s `addons/dot_core/` into your project and enable dot-stats in *Project > Project Settings > Plugins*.
 
-dot-core is the only dependency. [dot-auth](https://github.com/gamespice-platform/auth) is optional and supplies the two clients (`DotBackboneClient` for a server, `DotAuthClient` for a player).
+GameSpice Core is the only dependency. [GameSpice Auth](https://github.com/gamespice-platform/auth) is optional and supplies the two clients (`DotBackboneClient` for a server, `DotAuthClient` for a player).
 
 ## Use
 
@@ -43,7 +43,7 @@ tracker.store = store                       # before add_child
 
 Each reported delta is also merged into the store by the same rule, so a server with no back end still keeps every player's totals. The store answers `values_for(player)`, `top(stat, limit, offset)` (a `LOWEST` ascending, the rest descending, ties sharing a rank), `rank_of(stat, player)` and `remove_player(player)`.
 
-`DotStatsStoreSql` speaks SQLite, PostgreSQL and MySQL/MariaDB through [dot-sql](https://github.com/gamespice-platform/sql), without needing it to parse. Writes are guarded by a revision, so two servers sharing a table add up instead of overwriting. A failed write is kept for the next flush and never counts a counter twice.
+`DotStatsStoreSql` speaks SQLite, PostgreSQL and MySQL/MariaDB through [GameSpice SQL](https://github.com/gamespice-platform/sql), without needing it to parse. Writes are guarded by a revision, so two servers sharing a table add up instead of overwriting. A failed write is kept for the next flush and never counts a counter twice.
 
 ## Player-reported stats
 

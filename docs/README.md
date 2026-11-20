@@ -1,4 +1,4 @@
-# dot-stats docs
+# GameSpice Stats docs
 
 | File | What |
 | --- | --- |

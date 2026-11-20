@@ -4,11 +4,11 @@ What a stat is, the one rule every party follows, and the two surfaces that repo
 
 ## What this is, and what it is not
 
-A **leaderboard** is one number per player, ordered; dot-leaderboard has those. A **stat** is many numbers per player, accumulated, and nothing here orders anything. "Most kills" is a board a game may publish over its `kills` stat, or a ranking the site derives on read; the stat is the fact and the board is a view of it.
+A **leaderboard** is one number per player, ordered; GameSpice Leaderboard has those. A **stat** is many numbers per player, accumulated, and nothing here orders anything. "Most kills" is a board a game may publish over its `kills` stat, or a ranking the site derives on read; the stat is the fact and the board is a view of it.
 
-The two addons do not import each other, and this one carries its own value set (`DotStatsValues`) rather than dot-leaderboard's `DotStatSet`, because the family rule is that naming an absent `class_name` fails to parse, and because the two differ on purpose: `DotStatSet` is additive everywhere and the caller picks "best" per call; here the rule comes from the definition.
+The two addons do not import each other, and this one carries its own value set (`DotStatsValues`) rather than GameSpice Leaderboard's `DotStatSet`, because the family rule is that naming an absent `class_name` fails to parse, and because the two differ on purpose: `DotStatSet` is additive everywhere and the caller picks "best" per call; here the rule comes from the definition.
 
-**`Dot`-prefixed as `DotStats*`, not `DotStat*`**, because dot-leaderboard already owns `DotStatSet` and `class_name` is global.
+**`Dot`-prefixed as `DotStats*`, not `DotStat*`**, because GameSpice Leaderboard already owns `DotStatSet` and `class_name` is global.
 
 ## The kind is the whole contract
 
@@ -33,7 +33,7 @@ A first reading stands as it is whatever the kind: a counter's first delta is it
 
 **`report_to_backbone = false` means the reporter is never touched.** `_checkpoint` clears the delta and returns when reporting is off; otherwise a leave queues rows no flush will ever send and warns about them on every server that left reporting off, which is the default ([history](history.md)).
 
-dot-server does not create a tracker; a game's module does, beside its `DotBackboneClient`, keying players by the scoped id dot-platform resolved and counting nothing for a session that has none. Most games have one in their `*_progress.gd`.
+GameSpice Server does not create a tracker; a game's module does, beside its `DotBackboneClient`, keying players by the scoped id GameSpice Platform resolved and counting nothing for a session that has none. Most games have one in their `*_progress.gd`.
 
 ## Two surfaces, and which to use
 
@@ -63,14 +63,14 @@ With `log_events` the tracker keeps append-only rows `{session, player, is_bot, 
 
 The reporter posts `stats/v2/submit`: `{v:2, batch, server?, sessions, players:[{player, bot, name, session, user?, stats, by}]}` (the site's stats-site-contract.md). Session rows ride the next batch (200 per request) and are frozen with it; a bot never carries `user`. `max_rate` is enforced in the tracker as a per-player, per-stat token bucket (`refused(..., "over_rate")`, `clock` is injectable). `DotStatsClient` refuses a `source=server` stat. The SQL store keys a row by (player, stat, dim): dim `""` is the total, `axis:value` a breakdown cell.
 
-Seam: neither dot-game nor dot-bot calls the tracker yet. Whoever wires it passes `is_bot` in the `begin` meta or assigns `tracker.bot_check`.
+Seam: neither GameSpice Game nor GameSpice Bot calls the tracker yet. Whoever wires it passes `is_bot` in the `begin` meta or assigns `tracker.bot_check`.
 
 ## Deliberately not here
 
 - **App-wide totals across servers.** Two servers' keys for one player are uncorrelatable by design. A per-app view per player exists only under the app scope key, which is the player's to ask for, and which `DotStatsClient` and an app-scoped tracker both use.
 - **Server-level figures that are not about a player.** Rounds played, maps rotated: those are `DotBackboneClient.report_stats` and the site's own rollups.
 - **Anti-cheat.** Refusals here are structural: NaN, an undeclared stat, an account-shaped id. Plausibility needs the game's context.
-- **A tracker in dot-server.** A game's module builds one.
+- **A tracker in GameSpice Server.** A game's module builds one.
 
 ## Event feeds
 

@@ -20,9 +20,9 @@ Every store folds with `DotStatsValues.merge_from` / `DotStatsDef.merge`. The ob
 
 `top()` and `rank_of()` rank a `LOWEST` ascending and everything else descending, and a tie shares a rank (1, 2, 2, 4). A ranking of an undeclared stat is refused, not empty: it has no direction, and guessing one renders "fewest deaths" upside down.
 
-## dot-sql, duck-typed
+## GameSpice SQL, duck-typed
 
-The store reaches dot-sql **duck-typed**, so the addon names no dot-sql class and parses without it; dot-sql is linked into `addons/` (gitignored) only for the suites. The table is `DotStatsSqlSchema`'s spec (`SqlSchema`, because `DotStatsSchema` is already the set of definitions). A row is keyed (player, stat, dim): dim `""` is the total and `axis:value` a breakdown cell; migration step 2 rebuilds a v1 table with it.
+The store reaches GameSpice SQL **duck-typed**, so the addon names no GameSpice SQL class and parses without it; GameSpice SQL is linked into `addons/` (gitignored) only for the suites. The table is `DotStatsSqlSchema`'s spec (`SqlSchema`, because `DotStatsSchema` is already the set of definitions). A row is keyed (player, stat, dim): dim `""` is the total and `axis:value` a breakdown cell; migration step 2 rebuilds a v1 table with it.
 
 ## The file store writes once per flush
 

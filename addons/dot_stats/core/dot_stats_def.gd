@@ -24,9 +24,9 @@ extends Resource
 ## is a number that is wrong without anything having failed.
 ##
 ## [b]Not a leaderboard.[/b] A board is one number per player, ordered;
-## dot-leaderboard has those. A stat is many numbers per player, accumulated, and
+## GameSpice Leaderboard has those. A stat is many numbers per player, accumulated, and
 ## nothing here orders anything. A board over a stat — "most kills" — is the
-## site's to derive or the game's to publish through dot-leaderboard.
+## site's to derive or the game's to publish through GameSpice Leaderboard.
 
 ## How a new reading of the stat combines with the value already held.
 enum Kind {

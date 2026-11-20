@@ -1,7 +1,7 @@
 class_name DotStatsStoreSql
 extends DotStatsStore
 
-## Lifetime values in a real table, in whichever SQL a dot-sql driver speaks.
+## Lifetime values in a real table, in whichever SQL a GameSpice SQL driver speaks.
 ##
 ## [codeblock]
 ## var store := DotStatsStoreSql.new(DotSqlDriverSqlite.new("user://stats.db"))
@@ -10,7 +10,7 @@ extends DotStatsStore
 ## [/codeblock]
 ##
 ## [b]The driver is duck-typed[/b] — held untyped and asked for `query`, `execute`,
-## `dialect` and `migrate` — so dot-stats does not depend on dot-sql and parses in a
+## `dialect` and `migrate` — so GameSpice Stats does not depend on GameSpice SQL and parses in a
 ## project without it. The table is [DotStatsSqlSchema]'s.
 ##
 ## [b]A merge is read, fold, write — guarded.[/b] The fold is [method DotStatsDef.merge],
@@ -28,7 +28,7 @@ extends DotStatsStore
 
 const CHANNEL := "stats"
 
-## Where statements go: a dot-sql driver, or anything shaped like one.
+## Where statements go: a GameSpice SQL driver, or anything shaped like one.
 var driver = null
 
 ## Table name, in case an operator already owns `dot_stats_values` or runs two games in one

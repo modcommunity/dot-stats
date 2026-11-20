@@ -3,7 +3,7 @@ extends RefCounted
 
 ## A set of stat values for one player, merged by a schema.
 ##
-## [b]Deliberately not dot-leaderboard's [code]DotStatSet[/code].[/b] That class
+## [b]Deliberately not GameSpice Leaderboard's [code]DotStatSet[/code].[/b] That class
 ## is additive everywhere and a caller picks "best" or "lowest" per call; this
 ## one takes the rule from the definition, so the same [method record] call is
 ## right for every kind and a counter cannot be handed to a code path that

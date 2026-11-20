@@ -7,14 +7,14 @@ extends Node
 ## The other surface. [DotStatsTracker] runs where an integration credential
 ## is — a server, the app's service — and files figures about every player it
 ## sees. This runs in the game the player is holding, and files figures about
-## [b]one[/b] player, the one signed in, with the access token dot-auth's
+## [b]one[/b] player, the one signed in, with the access token GameSpice Auth's
 ## device flow issued them. There is no integration token anywhere near it,
 ## which is what makes it safe to ship in a client build.
 ##
 ## [codeblock]
 ## var mine := DotStatsClient.new()
 ## mine.schema = preload("res://stats.tres")
-## mine.client = auth_client              # dot-auth's DotAuthClient, duck-typed
+## mine.client = auth_client              # GameSpice Auth's DotAuthClient, duck-typed
 ## add_child(mine)
 ##
 ## mine.record(&"launches")               # +1 on a counter
@@ -59,7 +59,7 @@ signal reported(result: DotResult)
 @export_range(0.0, 600.0, 1.0, "or_greater") var report_interval: float = 30.0
 
 ## The player's client. Any object with `post_app(path, body)` and
-## `get_app(path, query)` — dot-auth's [code]DotAuthClient[/code], which is
+## `get_app(path, query)` — GameSpice Auth's [code]DotAuthClient[/code], which is
 ## not named here for the family's reason.
 var client: Object = null
 

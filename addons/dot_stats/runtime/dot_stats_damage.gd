@@ -1,8 +1,8 @@
 class_name DotStatsDamage
 extends RefCounted
 
-## Files a landed dot-combat `DotDamage` with a [DotStatsEventFeed]: the hit by body zone, and a round that crossed a wall or body or bounced.
-## Duck-typed on the damage (dot-stats names no combat class); what every shooter repeats, called from a `damage_applied` handler for players' shots.
+## Files a landed GameSpice Combat `DotDamage` with a [DotStatsEventFeed]: the hit by body zone, and a round that crossed a wall or body or bounced.
+## Duck-typed on the damage (GameSpice Stats names no combat class); what every shooter repeats, called from a `damage_applied` handler for players' shots.
 
 const GENERIC_GROUP := &"generic"
 const SIDE_KEY := &"hit_side"
@@ -39,7 +39,7 @@ static func report_hitzone(feed: DotStatsEventFeed, damage: Object) -> bool:
 			float(damage.get("health_lost")), bool(damage.get("lethal")), side)
 
 
-## Files every wall a resolved dot-combat `DotShot` crossed (its `penetrations`: `material`, `cost`), whether or not a player was behind it. Call from `shot_resolved` for players' shots; returns how many were filed.
+## Files every wall a resolved GameSpice Combat `DotShot` crossed (its `penetrations`: `material`, `cost`), whether or not a player was behind it. Call from `shot_resolved` for players' shots; returns how many were filed.
 static func report_shot(feed: DotStatsEventFeed, shot: Object) -> int:
 	if feed == null or shot == null:
 		return 0
@@ -50,7 +50,7 @@ static func report_shot(feed: DotStatsEventFeed, shot: Object) -> int:
 	return filed
 
 
-## Files a resolved dot-combat `DotShot` as one shot, and a hit when it `hit_anyone()` (accuracy: [DotStatsShots]). Call from `shot_resolved` for players' shots; returns how many counters were filed (0 to 2).
+## Files a resolved GameSpice Combat `DotShot` as one shot, and a hit when it `hit_anyone()` (accuracy: [DotStatsShots]). Call from `shot_resolved` for players' shots; returns how many counters were filed (0 to 2).
 static func report_shot_outcome(feed: DotStatsEventFeed, shot: Object) -> int:
 	if feed == null or shot == null:
 		return 0

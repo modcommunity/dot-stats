@@ -117,8 +117,8 @@ func report_shot_outcome(shooter: Variant, weapon: String, hit: bool) -> bool:
 	return ok
 
 
-## Connects a resolved-shot signal (dot-combat's `shot_resolved(shot)`) to [method report_shot_outcome]: the one line that gives any game accuracy.
-## The shot is read by duck type (`attacker`, `weapon_id`, `hit_anyone()`), so dot-stats names no dot-combat class. Declare [method DotStatsShots.declare] in the schema before the tracker starts; returns false (and connects nothing) when it is missing.
+## Connects a resolved-shot signal (GameSpice Combat's `shot_resolved(shot)`) to [method report_shot_outcome]: the one line that gives any game accuracy.
+## The shot is read by duck type (`attacker`, `weapon_id`, `hit_anyone()`), so GameSpice Stats names no GameSpice Combat class. Declare [method DotStatsShots.declare] in the schema before the tracker starts; returns false (and connects nothing) when it is missing.
 ## Players only: a shooter [member key_of] gives no key (a bot, an NPC, the world) files nothing.
 func bind_shots(source: Signal) -> bool:
 	if tracker == null or not tracker.schema.has(DotStatsShots.SHOTS):

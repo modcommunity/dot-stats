@@ -1,6 +1,6 @@
 extends Node
 
-## Harness, fakes and shared sections of the dot-stats suite; stats_selftest.gd extends it.
+## Harness, fakes and shared sections of the GameSpice Stats suite; stats_selftest.gd extends it.
 
 var _passed := 0
 var _failed := 0
@@ -8,7 +8,7 @@ var _entered := 0
 var _completed := 0
 
 
-## A stand-in for dot-auth's DotBackboneClient, which this addon never names.
+## A stand-in for GameSpice Auth's DotBackboneClient, which this addon never names.
 class FakeBackbone extends RefCounted:
 	var calls: Array[Dictionary] = []
 	var fail: bool = false
@@ -40,7 +40,7 @@ class FakeBackbone extends RefCounted:
 		})
 
 
-## A stand-in for dot-auth's DotAuthClient, the player's own token.
+## A stand-in for GameSpice Auth's DotAuthClient, the player's own token.
 class FakeApp extends RefCounted:
 	var calls: Array[Dictionary] = []
 	var fail: bool = false
@@ -769,7 +769,7 @@ func _is_int(v: Variant, minimum: int) -> bool:
 	return (v is int and v >= minimum) or (v is float and v == floorf(v) and v >= minimum)
 
 
-## Stand-in for a dot-combat DotDamage (dot-stats names no combat class).
+## Stand-in for a GameSpice Combat DotDamage (GameSpice Stats names no combat class).
 class DotStatsFakeShot:
 	extends RefCounted
 	var attacker: Variant
@@ -782,7 +782,7 @@ class DotStatsFakeShot:
 		return landed
 
 
-## Stand-in for dot-combat's `shot_resolved` signal.
+## Stand-in for GameSpice Combat's `shot_resolved` signal.
 class DotStatsShotSource:
 	extends RefCounted
 	signal resolved(shot: Object)

@@ -4,7 +4,7 @@
 
 ## The client is anything with `post_integration`
 
-`DotStatsReporter` calls `post_integration(path, body)` on an object it is handed: the generic hook dot-auth's `DotBackboneClient` exposes, which stamps `ts` (Unix **seconds**) and a `nonce`, adds the bearer header and rate-limits locally. So authentication lives in one place, this addon does not know a token exists, and **dot-auth is not a dependency**: naming `DotBackboneClient` would make this addon fail to parse without it. It is the same seam dot-leaderboard's reporter uses, so a game wires one client and both report through it.
+`DotStatsReporter` calls `post_integration(path, body)` on an object it is handed: the generic hook GameSpice Auth's `DotBackboneClient` exposes, which stamps `ts` (Unix **seconds**) and a `nonce`, adds the bearer header and rate-limits locally. So authentication lives in one place, this addon does not know a token exists, and **GameSpice Auth is not a dependency**: naming `DotBackboneClient` would make this addon fail to parse without it. It is the same seam GameSpice Leaderboard's reporter uses, so a game wires one client and both report through it.
 
 ## Three properties, each the answer to a lost report
 
@@ -18,9 +18,9 @@ Nothing in a body names an app or a server: **the token decides whose stats thes
 
 ## The player id is a pseudonym, and the reporter enforces it
 
-The backbone's `player` is "whatever the reporting server uses to mean this player on this server": the per-scope key dot-user's `DotUserScope` derives, or the one `POST /api/app/v1/play/scope-key` hands a client on join. It is **never** a site account id, and the backbone never resolves it to one; a server asserting "this player is that member" is a server that can put any figure against any account.
+The backbone's `player` is "whatever the reporting server uses to mean this player on this server": the per-scope key GameSpice User's `DotUserScope` derives, or the one `POST /api/app/v1/play/scope-key` hands a client on join. It is **never** a site account id, and the backbone never resolves it to one; a server asserting "this player is that member" is a server that can put any figure against any account.
 
-The backbone's identifier alphabet allows a colon, so a dot-auth account uid (`backbone:clx8f…`) would pass its schema and would be filed. `DotStatsReporter` refuses one before it leaves the process, because a server that filed those would hand every operator a stable global identifier for every player (the thing the scoped key exists to prevent), and it would do so with nothing failing. The identity comes from dot-auth, the *key* a stat is filed under comes from dot-user's scoping of it, and this addon refuses to confuse the two.
+The backbone's identifier alphabet allows a colon, so a GameSpice Auth account uid (`backbone:clx8f…`) would pass its schema and would be filed. `DotStatsReporter` refuses one before it leaves the process, because a server that filed those would hand every operator a stable global identifier for every player (the thing the scoped key exists to prevent), and it would do so with nothing failing. The identity comes from GameSpice Auth, the *key* a stat is filed under comes from GameSpice User's scoping of it, and this addon refuses to confuse the two.
 
 A consequence: because the key is scoped to the credential, a player on two servers of one game is two keys nothing can join. A game-wide figure per player exists only for a player who asked for the game-wide scope. That is the privacy property, not a gap.
 

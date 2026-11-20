@@ -4,14 +4,14 @@ extends RefCounted
 ## Sends players' statistics to the TMC backbone, coalesced and in batches,
 ## without losing them.
 ##
-## [b]dot-auth is not a dependency and [code]DotBackboneClient[/code] is not
+## [b]GameSpice Auth is not a dependency and [code]DotBackboneClient[/code] is not
 ## named.[/b] The family rule: a script that mentions an absent
 ## [code]class_name[/code] fails to parse. The client is held as an [Object] and
 ## its [code]post_integration(path, body)[/code] is called by name — the generic
-## hook dot-auth exposes for exactly this. It stamps [code]ts[/code] and
+## hook GameSpice Auth exposes for exactly this. It stamps [code]ts[/code] and
 ## [code]nonce[/code], adds the bearer header and rate-limits locally, so
 ## everything about authenticating to the backbone lives in one place and this
-## class does not know a token exists. The same seam dot-leaderboard's reporter
+## class does not know a token exists. The same seam GameSpice Leaderboard's reporter
 ## uses, so a game wires one client and both report through it.
 ##
 ## [b]Coalesced, because a stat is a running figure and not an event.[/b] A
@@ -34,9 +34,9 @@ extends RefCounted
 ## the first. See [code]docs/api/integration-api.md[/code] in website-city.
 ##
 ## [b]A player id is a pseudonym, never an account id.[/b] It is the per-scope
-## key dot-user's [code]DotUserScope[/code] derives, or the one the backbone's
+## key GameSpice User's [code]DotUserScope[/code] derives, or the one the backbone's
 ## [code]play/scope-key[/code] hands a client on join. An id shaped like a
-## dot-auth account uid ([code]backbone:…[/code]) is refused here, because a
+## GameSpice Auth account uid ([code]backbone:…[/code]) is refused here, because a
 ## server that filed those would hand every operator a stable global identifier
 ## for every player — the thing the scoped key exists to prevent — and it would
 ## do so without anything failing.

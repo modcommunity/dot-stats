@@ -4,7 +4,7 @@ extends Node
 
 ## Counts statistics for the players on a server and reports them.
 ##
-## The runtime half of dot-stats: a game calls [method record] as things happen,
+## The runtime half of GameSpice Stats: a game calls [method record] as things happen,
 ## the tracker keeps a per-player set for the session and a delta since the last
 ## report, and on a timer it hands the deltas to a [DotStatsReporter] and forgets
 ## them. A player who leaves is reported one last time and dropped.
@@ -12,7 +12,7 @@ extends Node
 ## [codeblock]
 ## var tracker := DotStatsTracker.new()
 ## tracker.schema = preload("res://stats.tres")
-## tracker.reporter.client = backbone      # dot-auth's DotBackboneClient
+## tracker.reporter.client = backbone      # GameSpice Auth's DotBackboneClient
 ## add_child(tracker)
 ##
 ## tracker.begin(player_key, display_name)  # on join; player_key is the scoped id
