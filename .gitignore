@@ -21,3 +21,8 @@ Thumbs.db
 # dot-sql: the suites drive the SQL store with its drivers. The addon itself reaches a
 # driver duck-typed and does not need it.
 /addons/dot_sql
+
+# dot-save: the file stores sit on DotSaveStoreFile. For local development, symlink it:
+#   ln -s ../../dot-save/addons/dot_save addons/dot_save
+# Consumers copy it into their own project beside dot_core.
+/addons/dot_save

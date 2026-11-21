@@ -4,7 +4,7 @@ Per-player statistics a game declares once and reports to the TMC backbone in ba
 
 Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is specific to stats. The reasoning is in [docs/](docs/README.md).
 
-**The distributable is `addons/dot_stats/`.** It requires dot-core and nothing else (symlinked, `.gitignore`). dot-auth, dot-leaderboard and dot-sql are never named; dot-sql is linked only for the suites.
+**The distributable is `addons/dot_stats/`.** It requires dot-core and dot-save (`ln -s ../../dot-save/addons/dot_save addons/dot_save`, gitignored; the file store lives there) (symlinked, `.gitignore`). dot-auth, dot-leaderboard and dot-sql are never named; dot-sql is linked only for the suites.
 
 ## Read before
 

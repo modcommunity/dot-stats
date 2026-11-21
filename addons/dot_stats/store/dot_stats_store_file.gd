@@ -17,6 +17,7 @@ var write_behind: bool = true
 var writes: int = 0
 
 var _loaded: bool = false
+var _files: DotSaveStoreFile
 var _dirty: bool = false
 var _ticking: bool = false
 var _task: int = -1
@@ -25,6 +26,16 @@ var _written: Array = []
 
 func _init(p_path: String = "user://dot_stats.json") -> void:
 	path = p_path
+
+
+## The file store the file is written through: the folder of [member path], the file's own name as the key and no ending added, so the path stays exactly what the caller gave. It follows [member path] as it changes.
+func files() -> DotSaveStoreFile:
+	if _files == null:
+		_files = DotSaveStoreFile.new()
+		_files.suffix = ""
+		_files.key_check = func(key: String) -> bool: return not key.is_empty()
+	_files.directory = path.get_base_dir()
+	return _files
 
 
 func _merge(
@@ -100,7 +111,7 @@ func finish() -> void:
 	_collect(true)
 	if _dirty:
 		_dirty = false
-		_write(_snapshot(), path, _written)
+		_write(_snapshot(), files(), path.get_file(), _written)
 		_collect(true)
 	_stop_ticking()
 
@@ -114,9 +125,9 @@ func _tick() -> void:
 	_dirty = false
 	var rows := _snapshot()
 	if DotPlatform.has_threads():
-		_task = WorkerThreadPool.add_task(_write.bind(rows, path, _written), false, "stats file")
+		_task = WorkerThreadPool.add_task(_write.bind(rows, files(), path.get_file(), _written), false, "stats file")
 	else:
-		_write(rows, path, _written)
+		_write(rows, files(), path.get_file(), _written)
 		_collect(true)
 
 
@@ -160,5 +171,5 @@ func _collect(wait: bool) -> bool:
 	return true
 
 
-static func _write(rows: Dictionary, to: String, result: Array) -> void:
-	result.append(DotPaths.write_json(to, rows, true, true))
+static func _write(rows: Dictionary, store: DotSaveStoreFile, key: String, result: Array) -> void:
+	result.append(store.write(key, JSON.stringify(rows, "\t")))
